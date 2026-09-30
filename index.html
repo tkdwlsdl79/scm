@@ -73,8 +73,9 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     </div>
     <input id="zoom" type="range" hidden>
     <label class="chk"><input type="checkbox" id="auto" checked>PASS면 자동으로 다음 제품으로 넘기기</label>
-    <label class="chk"><input type="checkbox" id="enh" checked>어두운 곳 인식 강화 (밝기·대비 자동 보정)</label>
+    <label class="chk"><input type="checkbox" id="enh" checked>어두운 곳·그림자 인식 강화 (조명 자동 보정)</label>
     <label class="chk"><input type="checkbox" id="autoOcr" checked>두 번째 QR이 안 읽히면 S/N 글자를 자동 인식해 대조</label>
+    <label class="chk"><input type="checkbox" id="autoFlash" checked>어두우면 플래시 자동 켜기 (빛 반사가 심하면 노출을 낮추고 그래도 심하면 자동으로 끔)</label>
     <label for="sens" style="margin-top:12px">인식 확정 시간 (짧을수록 빨리 인식, 길수록 오인식 감소)</label>
     <select id="sens">
       <option value="fast">빠름 (약 0.3초)</option>
@@ -166,7 +167,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     <div class="row"><button id="linkShareBtn" class="primary" type="button">앱 링크 공유</button></div>
   </div>
 
-  <div class="foot">v4 동작 방식: 카메라 영상을 약 0.13초 간격으로 분석해 QR/DataMatrix를 찾습니다. 같은 코드가 설정한 횟수(빠름 2회·보통 5회·느림 8회)만큼 연속으로 읽혀야 인정(오인식 방지)하며, 화면에 서로 다른 코드가 2개 이상 보이면 인식하지 않습니다. 어두운 곳에서는 밝기·대비를 자동 보정해 재시도하고(플래시 권장), 1~3프레임 놓쳐도 인식 진행이 끊기지 않습니다. 화면 왼쪽 위 '0 | 2'는 읽은 QR 개수이며 인식 중인 코드는 노란 테두리, 완료는 초록 테두리로 표시됩니다. 두 번째 QR이 2초 안에 안 읽히면 카메라에 비친 S/N 글자를 자동으로 읽어(글자 인식, 인터넷 필요) 첫 번째 QR의 S/N과 대조하고(O/0·I/L/1은 같은 글자로 보며 그 외에는 정확히 일치해야 PASS, 한두 글자만 다르게 읽히면 확인 버튼으로 직접 확인), 직접 입력으로도 대조할 수 있으며 이 경우 '[S/N 대조]'로 기록됩니다(제품코드는 확인되지 않음). 카메라 화면이 절반 이상 스크롤로 가려지면 스캔이 자동으로 멈추고, 스크롤하는 동안에도 잠깐 인식을 쉽니다. 제품코드·S/N 추출 규칙과 중복(이미 PASS된 S/N) 차단은 v3와 같습니다. 방금 끝난 제품의 QR은 화면에서 벗어날 때까지 무시하므로 다음 제품으로 자연스럽게 넘어갑니다. PASS는 짧은 '삑' 1회, FAIL/중복은 길게 2회 소리와 진동이 나며 FAIL·중복은 자동으로 넘어가지 않고 멈춥니다. 검증 결과는 이 브라우저에 자동 저장되며 '전체 초기화'로만 지워지고(임시저장 목록은 유지), 첫 번째 QR만 읽은 상태도 복원됩니다. 이름을 붙인 임시저장과 백업 파일 저장/불러오기도 지원합니다. 스캔·입력이 있을 때마다 즉시 저장하고, 추가로 30초마다·화면을 벗어날 때 자동 백업을 따로 남깁니다. 실시간 카메라는 HTTPS 주소(또는 localhost)에서만 동작할 수 있습니다.</div>
+  <div class="foot">v4 동작 방식: 카메라 영상을 약 0.13초 간격으로 분석해 QR/DataMatrix를 찾습니다. 같은 코드가 설정한 횟수(빠름 2회·보통 5회·느림 8회)만큼 연속으로 읽혀야 인정(오인식 방지)하며, 화면에 서로 다른 코드가 2개 이상 보이면 인식하지 않습니다. 어두운 곳·그림자에서는 조명을 평평하게 보정한 화면(3가지 방식)을 번갈아 재시도하고(플래시 권장), 1~3프레임 놓쳐도 인식 진행이 끊기지 않습니다. 화면 왼쪽 위 '0 | 2'는 읽은 QR 개수이며 인식 중인 코드는 노란 테두리, 완료는 초록 테두리로 표시됩니다. 두 번째 QR이 2초 안에 안 읽히면 카메라에 비친 S/N 글자를 자동으로 읽어(글자 인식, 인터넷 필요) 첫 번째 QR의 S/N과 대조하고(숫자와 모양이 비슷한 글자 — 0↔O·Q·D, 1↔I·L, 5↔S, 8↔B, 2↔Z, 6↔G — 는 같은 글자로 보고 그 외에는 정확히 일치해야 PASS, 한두 글자만 다르게 읽히면 확인 버튼으로 직접 확인), 직접 입력으로도 대조할 수 있으며 이 경우 '[S/N 대조]'로 기록됩니다(제품코드는 확인되지 않음). 카메라 화면이 절반 이상 스크롤로 가려지면 스캔이 자동으로 멈추고, 스크롤하는 동안에도 잠깐 인식을 쉽니다. 제품코드·S/N 추출 규칙과 중복(이미 PASS된 S/N) 차단은 v3와 같습니다. 방금 끝난 제품의 QR은 화면에서 벗어날 때까지 무시하므로 다음 제품으로 자연스럽게 넘어갑니다. PASS는 짧은 '삑' 1회, FAIL/중복은 길게 2회 소리와 진동이 나며 FAIL·중복은 자동으로 넘어가지 않고 멈춥니다. 검증 결과는 이 브라우저에 자동 저장되며 '전체 초기화'로만 지워지고(임시저장 목록은 유지), 첫 번째 QR만 읽은 상태도 복원됩니다. 이름을 붙인 임시저장과 백업 파일 저장/불러오기도 지원합니다. 스캔·입력이 있을 때마다 즉시 저장하고, 추가로 30초마다·화면을 벗어날 때 자동 백업을 따로 남깁니다. 어두우면(약 2초 연속) 플래시를 자동으로 켜고, 웹에서는 플래시 밝기를 조절할 수 없어 빛이 너무 강해 화면이 하얗게 날아가면 카메라 노출을 단계적으로 낮추고 그래도 심하면 플래시를 끄고 15초간 다시 켜지 않습니다. 플래시 버튼을 직접 누르면 60초간 자동 제어를 쉽니다. 실시간 카메라는 HTTPS 주소(또는 localhost)에서만 동작할 수 있습니다.</div>
 </div>
 
 <script>
@@ -181,6 +182,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   let stable = {raw:'', n:0};
   let viewHidden=false, lastScroll=0, ocrBusy=false, dark=false, emptyTicks=0, lastN=0, ocrWorker=null;
   let ocrRunning=false, ocrReady=false, ocrFail=false, ocrLoading=false, aSince=0, ocrRuns=0, ocrCand=null, fbShown=false;
+  let torchCapable=false, ecCaps=null, baseEc=0, curEc=0, torchSince=0, darkCount=0, glareCount=0, flashLockUntil=0, autoLockUntil=0, flashBusy=false, flashNoteText='', flashNoteUntil=0;
+  const lsCv = document.createElement('canvas'); lsCv.width = 64; lsCv.height = 48; const lsCtx = lsCv.getContext('2d', {willReadFrequently:true});
   const ocrCv = document.createElement('canvas'); const ocrCtx = ocrCv.getContext('2d', {willReadFrequently:true});
   const enhCv = document.createElement('canvas'); const enhCtx = enhCv.getContext('2d', {willReadFrequently:true});
   const SENS = {fast:2, normal:5, slow:8}; const SENS_KEY='scm_sens_v4'; let need = SENS.normal;
@@ -255,7 +258,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   function showHero(cls, big, detail){ $('pairResult').hidden=false; $('pairResult').className='resultHero '+cls; $('pairBig').textContent=big; $('pairDetail').textContent=detail; }
   function fmt(ts){ const d=new Date(ts); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
   function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function idleCam(){ if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
+  function idleCam(){ if(Date.now() < flashNoteUntil) return flashNoteText; if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
   function idleText(){ return cur.a ? '첫 번째 QR 완료. 이어서 두 번째 QR을 비추세요.' : `${records.length+ (cur.recNo?0:1)}번째 제품: 성적서/반입라벨 QR을 차례로 비추세요.`; }
 
   function renderSummary(){
@@ -390,7 +393,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     setStatus('S/N 글자를 인식하는 중입니다… (처음 한 번은 인식 데이터를 내려받느라 오래 걸릴 수 있습니다. 폰을 고정해 주세요)','wait'); camMsg('글자 인식 중…');
     try{
       const w = await getOcr(); ocrReady = true; setOcrInfo('글자 인식 준비 완료');
-      const f = enhancedFrame(1600, false, ocrCv, ocrCtx); if(!f) throw new Error('카메라 화면을 가져오지 못했습니다.');
+      const f = flatFrame(1600, 1600000, null, ocrCv, ocrCtx); if(!f) throw new Error('카메라 화면을 가져오지 못했습니다.');
       const r = await w.recognize(f.canvas);
       const res = handleOcrText((r && r.data && r.data.text) || '');
       if(res === 'cand') setStatus('S/N과 비슷한 글자가 읽혔습니다. 아래 확인 버튼으로 라벨과 같은지 확인하세요.','wait');
@@ -401,26 +404,34 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   }
   // ===== S/N 글자 자동 인식 =====
   function setOcrInfo(t){ $('ocrInfo').textContent = t; }
-  // 글자 인식(OCR)에서만: O↔0, I·L↔1 은 같은 글자로 취급. 그 밖의 글자는 정확히 같아야 함
-  function foldOcr(v){ return normSn(v).replace(/O/g,'0').replace(/[IL]/g,'1'); }
+  // 글자 인식(OCR) 전용 비교: 같은 글자이거나, '숫자 ↔ 모양이 비슷한 글자'(0↔O·Q·D, 1↔I·L, 5↔S, 8↔B, 2↔Z, 6↔G)일 때만 같은 글자로 봄.
+  // 글자끼리(예: Q↔O)나 숫자끼리(예: 1↔7)의 차이는 다른 글자로 취급
+  const CONF_CLASS = {'0':0,'O':0,'Q':0,'D':0,'1':1,'I':1,'L':1,'5':5,'S':5,'8':8,'B':8,'2':2,'Z':2,'6':6,'G':6};
+  const isDig = ch => ch >= '0' && ch <= '9';
+  function charEq(a, b){
+    if(a === b) return true;
+    if(isDig(a) === isDig(b)) return false;
+    return CONF_CLASS[a] !== undefined && CONF_CLASS[a] === CONF_CLASS[b];
+  }
+  function eqStr(a, b){ if(a.length !== b.length) return false; for(let i=0;i<a.length;i++) if(!charEq(a[i], b[i])) return false; return true; }
   function lev(a, b){
     const m = a.length, n = b.length; if(!m) return n; if(!n) return m;
     let p = Array.from({length:n+1}, (_,j)=>j);
-    for(let i=1;i<=m;i++){ const c=[i]; for(let j=1;j<=n;j++){ c[j] = Math.min(p[j]+1, c[j-1]+1, p[j-1] + (a[i-1]===b[j-1] ? 0 : 1)); } p = c; }
+    for(let i=1;i<=m;i++){ const c=[i]; for(let j=1;j<=n;j++){ c[j] = Math.min(p[j]+1, c[j-1]+1, p[j-1] + (charEq(a[i-1], b[j-1]) ? 0 : 1)); } p = c; }
     return p[n];
   }
   // 반환: 'pass'(자동 PASS) | 'cand'(비슷한 글자 → 사람이 확인) | 'none'
   function handleOcrText(text){
     if(!cur.a || cur.b || cur.result) return 'none';
-    const tg = foldOcr(cur.a.sn); if(!tg) return 'none';
+    const tg = normSn(cur.a.sn); if(!tg) return 'none';
     const base = splitTokens(text).map(normSn).filter(Boolean);
     const cands = [];
     for(let i=0;i<base.length;i++){ cands.push(base[i]); if(i+1<base.length) cands.push(base[i]+base[i+1]); }
     let best = null;
-    for(const c of cands){ if(Math.abs(c.length - tg.length) > 2) continue; const d = lev(foldOcr(c), tg); if(!best || d < best.d) best = {c, d}; }
+    for(const c of cands){ if(Math.abs(c.length - tg.length) > 2) continue; const d = lev(c, tg); if(!best || d < best.d) best = {c, d}; }
     $('ocrLast').textContent = '마지막으로 읽은 글자: ' + (String(text||'').replace(/\s+/g,' ').trim().slice(0,100) || '(읽힌 글자 없음)');
     if(best && best.d === 0){
-      const itemFound = base.some(t => foldOcr(t) === foldOcr(cur.a.itemNo));
+      const itemNorm = normSn(cur.a.itemNo), itemFound = !!itemNorm && base.some(t => eqStr(t, itemNorm));
       passBySn('S/N 글자 자동', itemFound ? `S/N·제품코드 글자 모두 일치 · ${cur.a.itemNo} · ${cur.a.sn}` : `S/N 글자 일치 · ${cur.a.sn} (제품코드는 글자로 확인되지 않음)`);
       return 'pass';
     }
@@ -446,7 +457,11 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     ocrRunning = true; ocrRuns++;
     try{
       camMsg(`S/N 글자 자동 확인 중… (${ocrRuns}회)`);
-      const f = enhancedFrame(1400, true, ocrCv, ocrCtx); if(!f) return;
+      const mode = (ocrRuns-1) % 3;                                   // 조명 보정(전체) → 조명 보정(가운데 확대) → 밝기·대비 보정 순환
+      const f = mode===0 ? flatFrame(1600, 1600000, null, ocrCv, ocrCtx)
+              : mode===1 ? flatFrame(1600, 1600000, {x0:.08, y0:.15, x1:.92, y1:.85}, ocrCv, ocrCtx)
+              :            enhancedFrame(1600, false, ocrCv, ocrCtx);
+      if(!f) return;
       const w = await getOcr(); const r = await w.recognize(f.canvas);
       if(!cur.a || cur.b || cur.result) return;                        // 그 사이 QR로 끝났으면 무시
       const res = handleOcrText((r && r.data && r.data.text) || '');
@@ -489,7 +504,36 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     for(let v=0; v<256; v++){ let x=(v-lo)*gain; x = x<0?0:x>255?255:x; lut[v] = Math.round(255*Math.pow(x/255, gamma)); }
     for(let i=0;i<n;i++){ const j=i*4, v=lut[lum[i]]; d[j]=d[j+1]=d[j+2]=v; d[j+3]=255; }
     cx.putImageData(img, 0, 0);
-    return {canvas:cv, avg};
+    return {canvas:cv, avg, scale:sc, sx:0, sy:sy};
+  }
+  // 그림자·어두운 곳용: 살짝 흐리게 한 뒤, 주변 밝기(상자 평균)로 나눠 조명을 평평하게 만듦 (좌표 복원용 sx, sy, scale 반환)
+  function flatFrame(maxW, maxPx, crop, cv, cx){
+    const vw = video.videoWidth, vh = video.videoHeight; if(!vw || !vh) return null;
+    const c = crop || {x0:0, y0:0, x1:1, y1:1};
+    const sx = vw*c.x0, sy = vh*c.y0, sw = vw*(c.x1-c.x0), sh = vh*(c.y1-c.y0);
+    const sc = Math.min(1, maxW/sw, Math.sqrt(maxPx/(sw*sh)));
+    const w = Math.max(16, Math.round(sw*sc)), h = Math.max(16, Math.round(sh*sc));
+    cv.width = w; cv.height = h;
+    try{ cx.filter = 'blur(1.2px)'; }catch(e){}
+    cx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+    try{ cx.filter = 'none'; }catch(e){}
+    const img = cx.getImageData(0, 0, w, h), d = img.data, n = w*h;
+    const gray = new Uint8Array(n); let sum = 0;
+    for(let i=0;i<n;i++){ const j=i*4, y=(d[j]*77 + d[j+1]*150 + d[j+2]*29) >> 8; gray[i]=y; sum+=y; }
+    const W = w+1, ii = new Uint32Array(W*(h+1));
+    for(let y=0;y<h;y++){ let row=0; const o=(y+1)*W, q=y*W; for(let x=0;x<w;x++){ row += gray[y*w+x]; ii[o+x+1] = ii[q+x+1] + row; } }
+    const r = Math.max(8, Math.round(Math.max(w,h)/12));
+    for(let y=0;y<h;y++){
+      const y0 = Math.max(0,y-r), y1 = Math.min(h,y+r+1);
+      for(let x=0;x<w;x++){
+        const x0 = Math.max(0,x-r), x1 = Math.min(w,x+r+1);
+        const bg = (ii[y1*W+x1] - ii[y0*W+x1] - ii[y1*W+x0] + ii[y0*W+x0]) / ((x1-x0)*(y1-y0)) + 1;
+        let v = gray[y*w+x]*200/bg; if(v > 255) v = 255;
+        const j = (y*w+x)*4; d[j]=d[j+1]=d[j+2]=v; d[j+3]=255;
+      }
+    }
+    cx.putImageData(img, 0, 0);
+    return {canvas:cv, avg:sum/n, scale:sc, sx, sy};
   }
   function drawOverlay(codes){
     const cv = $('ov'), r = cv.getBoundingClientRect();
@@ -528,7 +572,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     for(const [raw, t] of ignore){ if(now - t > RELEASE_MS) ignore.delete(raw); }      // 사라진 지 오래되면 해제
     const fresh = [...new Set(codes.map(c => c.rawValue).filter(r => !ignore.has(r)))];
     if(!fresh.length){
-      if(stable.raw){ stable.miss = (stable.miss||0) + 1; if(stable.miss > 3) stable = {raw:'', n:0, miss:0}; }   // 어두울 때 1~3프레임 놓쳐도 진행 유지
+      if(stable.raw){ stable.miss = (stable.miss||0) + 1; if(stable.miss > 5) stable = {raw:'', n:0, miss:0}; }   // 어두울 때 1~3프레임 놓쳐도 진행 유지
       if(!stable.raw && !cur.result && !viewHidden && stream) camMsg(idleCam());
       return;
     }
@@ -548,15 +592,18 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     try{
       let codes = (await detector.detect(video)).filter(c => c.rawValue);
       if(codes.length){ dark = false; emptyTicks = 0; }
-      else if($('enh').checked && (++emptyTicks % 2 === 0)){          // 못 찾았을 때만, 2번에 1번 밝기·대비 보정본으로 재시도
-        const f = enhancedFrame(1280);
+      else if($('enh').checked){                                    // 못 찾았을 때마다 보정 화면 3가지를 번갈아 재시도
+        const v = emptyTicks++ % 3;
+        const f = v===0 ? flatFrame(1100, 650000, null, enhCv, enhCtx)
+                : v===1 ? flatFrame(1100, 650000, {x0:.12, y0:.12, x1:.88, y1:.88}, enhCv, enhCtx)
+                :         enhancedFrame(1280);
         if(f){
           dark = f.avg < 70;
           const found = (await detector.detect(f.canvas)).filter(c => c.rawValue);
-          const k = video.videoWidth / f.canvas.width;
+          const k = 1 / f.scale, X = x => f.sx + x*k, Y = y => f.sy + y*k;
           codes = found.map(c => ({rawValue:c.rawValue, format:c.format,
-            boundingBox: c.boundingBox ? {x:c.boundingBox.x*k, y:c.boundingBox.y*k, width:c.boundingBox.width*k, height:c.boundingBox.height*k} : null,
-            cornerPoints: (c.cornerPoints||[]).map(p => ({x:p.x*k, y:p.y*k}))}));
+            boundingBox: c.boundingBox ? {x:X(c.boundingBox.x), y:Y(c.boundingBox.y), width:c.boundingBox.width*k, height:c.boundingBox.height*k} : null,
+            cornerPoints: (c.cornerPoints||[]).map(p => ({x:X(p.x), y:Y(p.y)}))}));
         }
       }
       handleFrame(codes);
@@ -610,6 +657,49 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     if(n==='SecurityError' || window.isSecureContext === false) return '보안 연결(HTTPS) 주소가 아니라 카메라를 쓸 수 없습니다. 주소가 https://tkdwlsdl79.github.io/scm/ 인지 확인하세요.';
     return (e && e.message) || String(e);
   }
+  // ===== 플래시 자동 제어 =====
+  // 웹에서는 플래시 밝기를 조절할 수 없고 켜기/끄기만 가능 → '노출 낮추기'로 빛 반사를 줄이고, 그래도 심하면 끔
+  function flashNote(t){ flashNoteText = t; flashNoteUntil = Date.now() + 5000; camMsg(t); }
+  function lightStats(){
+    const vw = video.videoWidth, vh = video.videoHeight; if(!vw || !vh) return null;
+    lsCtx.drawImage(video, vw*0.15, vh*0.15, vw*0.7, vh*0.7, 0, 0, 64, 48);
+    const d = lsCtx.getImageData(0, 0, 64, 48).data, n = 64*48; let sum = 0, sat = 0;
+    for(let i=0;i<n;i++){ const j=i*4, y=(d[j]*77 + d[j+1]*150 + d[j+2]*29) >> 8; sum += y; if(y >= 250) sat++; }
+    return {avg:sum/n, sat:sat/n};
+  }
+  async function setEc(v){
+    if(!ecCaps || !track) return;
+    const val = Math.max(ecCaps.min, Math.min(ecCaps.max, v)); curEc = val;
+    try{ await track.applyConstraints({advanced:[{exposureCompensation:val}]}); }catch(e){}
+  }
+  async function setTorch(on){
+    if(!track) return false;
+    try{ await track.applyConstraints({advanced:[{torch:on}]}); }catch(e){ return false; }
+    torchOn = on; $('torchBtn').textContent = on ? '플래시 끄기' : '플래시 켜기';
+    if(on){ torchSince = Date.now(); glareCount = 0; await setEc(0); }   // 플래시를 켜면 기본 노출 보정(+)은 해제
+    else { await setEc(baseEc); }
+    return true;
+  }
+  async function flashTick(){
+    if(!$('autoFlash').checked || !torchCapable || !track || !stream || flashBusy || viewHidden) return;
+    const now = Date.now(); if(now < autoLockUntil) return;
+    const st = lightStats(); if(!st) return;
+    flashBusy = true;
+    try{
+      if(!torchOn){
+        darkCount = (st.avg < 60 && now >= flashLockUntil) ? darkCount + 1 : 0;      // 약 2초 연속으로 어두울 때만 (깜빡임 방지)
+        if(darkCount >= 3){ darkCount = 0; if(await setTorch(true)) flashNote('어두워서 플래시를 켰습니다'); }
+      } else if(now - torchSince > 2500){                                              // 켠 직후 카메라 노출이 안정될 때까지 대기
+        const glare = st.sat > 0.25 || st.avg > 215;                                   // 화면의 25% 이상이 하얗게 날아가면 과노출
+        glareCount = glare ? glareCount + 1 : 0;
+        if(glareCount >= 2){
+          glareCount = 0;
+          if(ecCaps && curEc > ecCaps.min + 1e-6){ await setEc(curEc - (ecCaps.max - ecCaps.min)/8); torchSince = now - 1200; flashNote('빛이 너무 강해 노출을 낮췄습니다'); }
+          else { await setTorch(false); flashLockUntil = now + 15000; flashNote('빛 반사가 심해 플래시를 껐습니다 — 폰을 살짝 기울여 보세요'); }   // 15초간 다시 켜지 않음
+        }
+      }
+    }finally{ flashBusy = false; }
+  }
   async function startCam(){
     try{
       await getDetector();
@@ -621,11 +711,11 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
       try{
         const c0 = (track.getCapabilities && track.getCapabilities()) || {};
         if(c0.exposureMode && c0.exposureMode.includes('continuous')){ try{ await track.applyConstraints({advanced:[{exposureMode:'continuous'}]}); }catch(e){} }
-        if(c0.exposureCompensation){ const ec = c0.exposureCompensation, v = Math.max(ec.min, Math.min(1, ec.max/2)); try{ await track.applyConstraints({advanced:[{exposureCompensation:v}]}); }catch(e){} }
+        if(c0.exposureCompensation){ const ec = c0.exposureCompensation, v = Math.max(ec.min, Math.min(1, ec.max/2)); ecCaps = ec; baseEc = v; curEc = v; try{ await track.applyConstraints({advanced:[{exposureCompensation:v}]}); }catch(e){} }
         if(c0.whiteBalanceMode && c0.whiteBalanceMode.includes('continuous')){ try{ await track.applyConstraints({advanced:[{whiteBalanceMode:'continuous'}]}); }catch(e){} }
       }catch(e){}
       const caps = (track.getCapabilities && track.getCapabilities()) || {};
-      $('torchBtn').hidden = !caps.torch; torchOn=false; $('torchBtn').textContent='플래시 켜기';
+      $('torchBtn').hidden = !caps.torch; torchCapable = !!caps.torch; torchOn=false; darkCount=0; glareCount=0; $('torchBtn').textContent='플래시 켜기';
       if(caps.zoom){ const z=$('zoom'); z.min=caps.zoom.min; z.max=caps.zoom.max; z.step=caps.zoom.step||0.1; z.value=caps.zoom.min; z.hidden=false; } else $('zoom').hidden=true;
       try{ if(navigator.wakeLock) wake = await navigator.wakeLock.request('screen'); }catch(e){}
       clearInterval(timer); timer = setInterval(tick, 130);
@@ -638,7 +728,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     }
   }
   function stopCam(){
-    clearInterval(timer); timer=null; dark=false; try{ drawOverlay([]); }catch(e){}
+    clearInterval(timer); timer=null; dark=false; torchOn=false; torchCapable=false; ecCaps=null; darkCount=0; glareCount=0; try{ drawOverlay([]); }catch(e){}
     if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; track=null; }
     video.srcObject=null; try{ wake && wake.release(); }catch(e){} wake=null;
     $('camBtn').textContent='카메라 시작'; $('camBtn').classList.remove('secondary'); $('torchBtn').hidden=true; $('zoom').hidden=true;
@@ -646,10 +736,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   }
 
   $('camBtn').addEventListener('click', ()=>{ if(stream){ wasOn=false; stopCam(); } else startCam(); });
-  $('torchBtn').addEventListener('click', async ()=>{
-    if(!track) return; torchOn = !torchOn;
-    try{ await track.applyConstraints({advanced:[{torch:torchOn}]}); $('torchBtn').textContent = torchOn?'플래시 끄기':'플래시 켜기'; }catch(e){ torchOn=!torchOn; }
-  });
+  $('torchBtn').addEventListener('click', async ()=>{ if(!track) return; autoLockUntil = Date.now() + 60000; await setTorch(!torchOn); });   // 직접 누르면 60초간 자동 제어 쉼
   $('zoom').addEventListener('input', async e=>{ try{ await track.applyConstraints({advanced:[{zoom:Number(e.target.value)}]}); }catch(err){} });
   document.addEventListener('visibilitychange', ()=>{
     if(document.hidden){ if(stream){ wasOn=true; stopCam(); } }
@@ -810,6 +897,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   });
   setInterval(autoBackup, 30000);
   setInterval(autoOcrTick, 1200);
+  setInterval(flashTick, 600);
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) autoBackup(); });
   window.addEventListener('pagehide', autoBackup);
   try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); }catch(e){}
