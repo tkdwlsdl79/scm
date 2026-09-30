@@ -43,6 +43,12 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
 <body>
 <div class="wrap">
   <div class="top"><h1>SCM 제품검증</h1><span class="badge">Android v4 · 연속 스캔</span></div>
+
+  <div id="inapp" class="status bad" hidden style="margin-top:12px">
+    <div>지금 <b>카카오톡 등 앱 안의 브라우저</b>로 열려 있어 카메라가 막힙니다. 아래 버튼으로 Chrome에서 다시 열어 주세요.</div>
+    <a id="inappBtn" class="btn" style="text-decoration:none;text-align:center;color:#fff">Chrome(외부 브라우저)로 열기</a>
+    <div class="muted" style="margin-top:8px">버튼이 안 되면 화면 오른쪽 위 메뉴(⋮ 또는 ⋯)에서 '다른 브라우저로 열기'를 누르거나, Chrome을 직접 열어 주소창에 tkdwlsdl79.github.io/scm 을 입력하세요.</div>
+  </div>
   <p class="muted">카메라를 켠 채로 성적서 QR → 반입라벨 QR(순서 무관)을 차례로 비추면 셔터 없이 자동 인식·비교합니다. PASS면 자동으로 다음 제품으로 넘어가고, FAIL이면 멈춥니다.</p>
 
   <div class="card">
@@ -508,12 +514,44 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     }, {threshold:[0,0.25,0.5,0.75,1]}).observe(document.querySelector('.cam'));
   }
   window.addEventListener('scroll', () => { lastScroll = Date.now(); stable = {raw:'', n:0}; }, {passive:true});
+  const UA = navigator.userAgent || '';
+  const IS_KAKAO = /KAKAOTALK/i.test(UA);
+  const IN_APP = IS_KAKAO || /; wv\)|NAVER\(inapp|Instagram|FBAN|FBAV|\bLine\//i.test(UA);
+  function setupInApp(){
+    if(!IN_APP) return;
+    $('inapp').hidden = false;
+    const url = location.href.split('#')[0];
+    $('inappBtn').href = IS_KAKAO ? 'kakaotalk://web/openExternal?url=' + encodeURIComponent(url)
+      : 'intent://' + location.host + location.pathname + location.search + '#Intent;scheme=https;package=com.android.chrome;end';
+  }
+  async function openStream(){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('이 브라우저/주소에서는 카메라를 쓸 수 없습니다.');
+    const tries = [
+      {video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}}, audio:false},
+      {video:{facingMode:{ideal:'environment'}}, audio:false},
+      {video:true, audio:false}
+    ];
+    let last;
+    for(const c of tries){
+      try{ return await navigator.mediaDevices.getUserMedia(c); }
+      catch(e){ last = e; if(e && (e.name==='NotAllowedError' || e.name==='SecurityError')) throw e; }   // 권한 문제는 재시도해도 소용없음
+    }
+    throw last;
+  }
+  function camErrText(e){
+    const n = (e && e.name) || '';
+    if(IN_APP) return '앱(카카오톡 등) 안의 브라우저에서는 카메라가 막힙니다. 화면 위쪽 [Chrome으로 열기]를 누르거나 Chrome을 직접 열어 주소를 입력하세요.';
+    if(n==='NotAllowedError') return '카메라 권한이 거부되었습니다. 주소창 왼쪽 자물쇠(ⓘ) → 권한 → 카메라를 [허용]으로 바꾸고 새로고침하세요. (폰 설정 → 앱 → Chrome → 권한 → 카메라도 확인)';
+    if(n==='NotFoundError' || n==='OverconstrainedError') return '사용할 수 있는 카메라를 찾지 못했습니다.';
+    if(n==='NotReadableError') return '카메라를 다른 앱이 쓰고 있거나 열 수 없습니다. 카메라·화상통화 앱을 모두 닫고 Chrome을 완전히 종료한 뒤 다시 열어 주세요.';
+    if(n==='SecurityError' || window.isSecureContext === false) return '보안 연결(HTTPS) 주소가 아니라 카메라를 쓸 수 없습니다. 주소가 https://tkdwlsdl79.github.io/scm/ 인지 확인하세요.';
+    return (e && e.message) || String(e);
+  }
   async function startCam(){
     try{
       await getDetector();
-      if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('이 주소에서는 실시간 카메라를 쓸 수 없습니다(HTTPS 필요). 아래 [사진 촬영 방식]을 사용하세요.');
-      actx = actx || new (window.AudioContext||window.webkitAudioContext)(); if(actx.resume) actx.resume();
-      stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}}, audio:false});
+      try{ actx = actx || new (window.AudioContext||window.webkitAudioContext)(); if(actx.resume) actx.resume(); }catch(e){}   // 소리 장치 실패가 카메라를 막지 않도록
+      stream = await openStream();
       video.srcObject = stream; await video.play();
       track = stream.getVideoTracks()[0];
       try{ await track.applyConstraints({advanced:[{focusMode:'continuous'}]}); }catch(e){}
@@ -531,7 +569,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
       $('camBtn').textContent='카메라 끄기'; $('camBtn').classList.add('secondary');
       camMsg('QR을 사각형 안에 비추세요'); setStatus(idleText(),'wait'); wasOn=true;
     }catch(e){
-      setStatus(e.name==='NotAllowedError' ? '카메라 권한이 거부되었습니다. 브라우저 설정에서 카메라를 허용해 주세요.' : (e.message||String(e)),'bad');
+      setStatus(camErrText(e) + ' [진단: ' + ((e && e.name) || 'Error') + ' · ' + location.protocol + ' · ' + (window.isSecureContext ? '보안연결' : '비보안') + ']','bad');
       $('fallback').open = true; stopCam();
     }
   }
@@ -710,6 +748,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   window.addEventListener('pagehide', autoBackup);
   try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); }catch(e){}
 
+  setupInApp();
   load(); loadSaved(); renderSummary(); renderSaved(); renderAuto(); setStatus('카메라를 시작하세요.','wait');
   if(cur.a){ paint('a', cur.a); setStatus('이전에 읽은 첫 번째 QR을 복원했습니다. 카메라를 시작하고 두 번째 QR을 스캔하세요.','wait'); }
   if(!('BarcodeDetector' in window)) setStatus('현재 브라우저는 코드 인식 기능을 지원하지 않습니다. Android Chrome 최신 버전에서 열어 주세요.','bad');
