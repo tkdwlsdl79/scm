@@ -4,6 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>SCM 제품검증 v4</title>
+<meta name="description" content="성적서·반입라벨 QR을 연속 스캔해 제품코드와 S/N을 자동 비교합니다.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="SCM 제품검증">
+<meta property="og:description" content="성적서·반입라벨 QR을 연속 스캔해 제품코드와 S/N을 자동 비교합니다.">
+<meta property="og:url" content="https://tkdwlsdl79.github.io/scm/">
 <style>
 :root{--bg:#f3f5f7;--card:#fff;--ink:#17202a;--muted:#67717d;--line:#d9dee5;--accent:#163f73;--ok:#137a43;--bad:#c62828;--wait:#8a5a00}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",Arial,sans-serif}
@@ -18,6 +23,11 @@ select{width:100%;border:1px solid #cbd2da;border-radius:10px;padding:12px;backg
 .cam video{width:100%;height:100%;object-fit:cover;display:block}
 .reticle{position:absolute;left:50%;top:50%;width:58%;aspect-ratio:1;transform:translate(-50%,-50%);border:3px solid rgba(255,255,255,.85);border-radius:16px;box-shadow:0 0 0 999px rgba(0,0,0,.18);pointer-events:none}
 .camMsg{position:absolute;left:0;right:0;bottom:0;padding:9px 12px;font-size:13px;font-weight:800;color:#fff;background:rgba(0,0,0,.55);text-align:center}
+.ov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.counter{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.62);color:#fff;font-weight:1000;font-size:28px;letter-spacing:1px;padding:4px 14px;border-radius:12px;pointer-events:none;transform-origin:left top}
+.counter.ok{background:var(--ok)}.counter.bad{background:var(--bad)}
+.counter.pop{animation:pop .35s}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
 .flash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:56px;font-weight:1000;color:#fff;opacity:0;pointer-events:none;transition:opacity .15s}
 .flash.ok{background:rgba(19,122,67,.72);opacity:1}.flash.bad{background:rgba(198,40,40,.78);opacity:1}
 .btn{display:block;width:100%;border:0;border-radius:11px;padding:14px 12px;font-weight:900;background:var(--accent);color:#fff;margin-top:10px;cursor:pointer}.btn.secondary{background:#e9edf2;color:#27313b}.btn:disabled{opacity:.45;cursor:not-allowed}
@@ -45,7 +55,9 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   <div class="card">
     <div class="cam">
       <video id="video" playsinline muted></video>
+      <canvas id="ov" class="ov"></canvas>
       <div class="reticle"></div>
+      <div id="counter" class="counter">0 | 2</div>
       <div id="flash" class="flash"></div>
       <div id="camMsg" class="camMsg">카메라 꺼짐 — 아래 [카메라 시작]을 누르세요</div>
     </div>
@@ -55,7 +67,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     </div>
     <input id="zoom" type="range" hidden>
     <label class="chk"><input type="checkbox" id="auto" checked>PASS면 자동으로 다음 제품으로 넘기기</label>
-    <label for="sens" style="margin-top:12px">인식 민감도 (느릴수록 QR을 더 오래 비춰야 인식됩니다)</label>
+    <label class="chk"><input type="checkbox" id="enh" checked>어두운 곳 인식 강화 (밝기·대비 자동 보정)</label>
+    <label for="sens" style="margin-top:12px">인식 확정 시간 (짧을수록 빨리 인식, 길수록 오인식 감소)</label>
     <select id="sens">
       <option value="fast">빠름 (약 0.3초)</option>
       <option value="normal" selected>보통 (약 0.7초)</option>
@@ -74,6 +87,16 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     </div>
 
     <div id="scanStatus" class="status wait">카메라를 시작하세요.</div>
+
+    <div id="fallbackPanel" class="step" hidden>
+      <div class="stephead"><b>두 번째 QR이 안 읽히나요?</b></div>
+      <p class="muted">라벨이 접히거나 가려져 QR이 안 읽히면, 첫 번째 QR의 S/N을 라벨의 글자에서 찾아 대조합니다. 일치하면 PASS로 기록하고 '[S/N 대조]'로 표시됩니다.</p>
+      <button id="ocrBtn" class="btn secondary" type="button">S/N 글자 인식으로 대조 (카메라로 S/N 글자를 크게 비추고 누르기)</button>
+      <label for="manualSn" style="margin-top:12px">또는 라벨에 적힌 S/N 직접 입력</label>
+      <input type="text" id="manualSn" placeholder="예: 라벨의 S/N 그대로" autocapitalize="characters" autocomplete="off">
+      <button id="manualBtn" class="btn secondary" type="button">입력한 S/N으로 대조</button>
+      <button id="failBtn" class="btn secondary" type="button" hidden>불일치로 FAIL 기록</button>
+    </div>
     <div id="pairResult" class="resultHero" hidden><div id="pairBig" class="big">—</div><div id="pairDetail"></div></div>
 
     <div class="row">
@@ -126,7 +149,13 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     </div>
   </div>
 
-  <div class="foot">v4 동작 방식: 카메라 영상을 약 0.13초 간격으로 분석해 QR/DataMatrix를 찾습니다. 같은 코드가 설정한 횟수(빠름 2회·보통 5회·느림 8회)만큼 연속으로 읽혀야 인정(오인식 방지)하며, 화면에 서로 다른 코드가 2개 이상 보이면 인식하지 않습니다. 카메라 화면이 절반 이상 스크롤로 가려지면 스캔이 자동으로 멈추고, 스크롤하는 동안에도 잠깐 인식을 쉽니다. 제품코드·S/N 추출 규칙과 중복(이미 PASS된 S/N) 차단은 v3와 같습니다. 방금 끝난 제품의 QR은 화면에서 벗어날 때까지 무시하므로 다음 제품으로 자연스럽게 넘어갑니다. PASS는 짧은 '삑' 1회, FAIL/중복은 길게 2회 소리와 진동이 나며 FAIL·중복은 자동으로 넘어가지 않고 멈춥니다. 검증 결과는 이 브라우저에 자동 저장되며 '전체 초기화'로만 지워지고(임시저장 목록은 유지), 첫 번째 QR만 읽은 상태도 복원됩니다. 이름을 붙인 임시저장과 백업 파일 저장/불러오기도 지원합니다. 스캔·입력이 있을 때마다 즉시 저장하고, 추가로 30초마다·화면을 벗어날 때 자동 백업을 따로 남깁니다. 실시간 카메라는 HTTPS 주소(또는 localhost)에서만 동작할 수 있습니다.</div>
+  <div class="card">
+    <label>이 검증 앱 링크 보내기</label>
+    <p class="muted">누르면 카카오톡 등 공유 창이 열립니다. 카카오톡을 선택하고 채팅방을 고르면 링크가 바로 전송됩니다.</p>
+    <div class="row"><button id="linkShareBtn" class="primary" type="button">앱 링크 공유</button></div>
+  </div>
+
+  <div class="foot">v4 동작 방식: 카메라 영상을 약 0.13초 간격으로 분석해 QR/DataMatrix를 찾습니다. 같은 코드가 설정한 횟수(빠름 2회·보통 5회·느림 8회)만큼 연속으로 읽혀야 인정(오인식 방지)하며, 화면에 서로 다른 코드가 2개 이상 보이면 인식하지 않습니다. 어두운 곳에서는 밝기·대비를 자동 보정해 재시도하고(플래시 권장), 1~3프레임 놓쳐도 인식 진행이 끊기지 않습니다. 화면 왼쪽 위 '0 | 2'는 읽은 QR 개수이며 인식 중인 코드는 노란 테두리, 완료는 초록 테두리로 표시됩니다. 두 번째 QR이 안 읽히면 S/N 글자 인식(인터넷 필요) 또는 직접 입력으로 대조할 수 있고, 이 경우 '[S/N 대조]'로 기록됩니다(제품코드는 확인되지 않음). 카메라 화면이 절반 이상 스크롤로 가려지면 스캔이 자동으로 멈추고, 스크롤하는 동안에도 잠깐 인식을 쉽니다. 제품코드·S/N 추출 규칙과 중복(이미 PASS된 S/N) 차단은 v3와 같습니다. 방금 끝난 제품의 QR은 화면에서 벗어날 때까지 무시하므로 다음 제품으로 자연스럽게 넘어갑니다. PASS는 짧은 '삑' 1회, FAIL/중복은 길게 2회 소리와 진동이 나며 FAIL·중복은 자동으로 넘어가지 않고 멈춥니다. 검증 결과는 이 브라우저에 자동 저장되며 '전체 초기화'로만 지워지고(임시저장 목록은 유지), 첫 번째 QR만 읽은 상태도 복원됩니다. 이름을 붙인 임시저장과 백업 파일 저장/불러오기도 지원합니다. 스캔·입력이 있을 때마다 즉시 저장하고, 추가로 30초마다·화면을 벗어날 때 자동 백업을 따로 남깁니다. 실시간 카메라는 HTTPS 주소(또는 localhost)에서만 동작할 수 있습니다.</div>
 </div>
 
 <script>
@@ -139,7 +168,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   let cur = {a:null, b:null, result:null, recNo:null};
   let ignore = new Map();              // raw -> 마지막으로 화면에서 본 시각
   let stable = {raw:'', n:0};
-  let viewHidden=false, lastScroll=0;
+  let viewHidden=false, lastScroll=0, ocrBusy=false, dark=false, emptyTicks=0, lastN=0, ocrWorker=null;
+  const enhCv = document.createElement('canvas'); const enhCtx = enhCv.getContext('2d', {willReadFrequently:true});
   const SENS = {fast:2, normal:5, slow:8}; const SENS_KEY='scm_sens_v4'; let need = SENS.normal;
   let stream=null, track=null, timer=null, busy=false, paused=false, autoTimer=null, detector=null, wake=null, wasOn=false, torchOn=false, actx=null;
 
@@ -190,31 +220,41 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     setTimeout(()=>{ f.className='flash'; f.textContent=''; }, cls==='ok' ? 900 : 1600);
   }
   function setState(slot, cls, text){ const el=$(slot+'State'); el.className='state'+(cls?' '+cls:''); el.textContent=text; }
+  function updateUI(){
+    const n = (cur.a?1:0) + (cur.b?1:0);
+    const c = $('counter'); c.textContent = `${n} | 2`;
+    c.className = 'counter' + (cur.result==='PASS' ? ' ok' : cur.result ? ' bad' : '');
+    if(n !== lastN){ lastN = n; if(n>0){ void c.offsetWidth; c.classList.add('pop'); } }
+    const showFb = !!cur.a && !cur.b && !cur.result;
+    $('fallbackPanel').hidden = !showFb;
+    if(!showFb) $('failBtn').hidden = true;
+  }
   function paint(slot, rec){
-    if(!rec){ $(slot+'Item').textContent='제품코드 : —'; $(slot+'Sn').textContent='S/N : —'; $(slot+'Raw').textContent='Raw Data : —'; setState(slot,'','대기'); return; }
+    if(!rec){ $(slot+'Item').textContent='제품코드 : —'; $(slot+'Sn').textContent='S/N : —'; $(slot+'Raw').textContent='Raw Data : —'; setState(slot,'','대기'); updateUI(); return; }
     $(slot+'Raw').textContent = `Raw Data (${rec.format||'code'}) : ${rec.raw}`;
-    $(slot+'Item').textContent = `제품코드 : ${rec.itemNo || '추출 실패'}`;
+    $(slot+'Item').textContent = rec.via ? '제품코드 : (미확인)' : `제품코드 : ${rec.itemNo || '추출 실패'}`;
     $(slot+'Sn').textContent = `S/N : ${rec.sn || '추출 실패'}`;
-    const ok = !!rec.itemNo && !!rec.sn; setState(slot, ok?'ok':'bad', ok?'완료':'데이터 확인');
+    const ok = !!rec.itemNo && !!rec.sn; setState(slot, ok?'ok':'bad', ok?(rec.via?'S/N 대조':'완료'):'데이터 확인'); updateUI();
   }
   function showHero(cls, big, detail){ $('pairResult').hidden=false; $('pairResult').className='resultHero '+cls; $('pairBig').textContent=big; $('pairDetail').textContent=detail; }
   function fmt(ts){ const d=new Date(ts); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
   function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function idleCam(){ return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
+  function idleCam(){ if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
   function idleText(){ return cur.a ? '첫 번째 QR 완료. 이어서 두 번째 QR을 비추세요.' : `${records.length+ (cur.recNo?0:1)}번째 제품: 성적서/반입라벨 QR을 차례로 비추세요.`; }
 
   function renderSummary(){
     const pass=records.filter(r=>r.result==='PASS').length, fail=records.length-pass;
     $('totalCount').textContent=records.length; $('passCount').textContent=pass; $('failCount').textContent=fail;
     $('log').innerHTML = records.length ? records.slice().reverse().map(r=>{
-      const retry = r.history && r.history.length ? ` <span class="muted">(재검증 · 이전 ${r.history.join('→')})</span>` : '';
+      const retry = (r.history && r.history.length ? ` <span class="muted">(재검증 · 이전 ${r.history.join('→')})</span>` : '') + (r.via ? ` <span class="muted">[${escapeHtml(r.via)} 대조]</span>` : '');
       return `<div class="logitem"><b>#${r.no}</b> <span class="${r.result==='PASS'?'pass':'fail'}">${r.result}</span>${retry} <span class="muted">${fmt(r.ts).slice(11)}</span><br><span class="muted">제품코드 ${escapeHtml(r.docItem)} ↔ ${escapeHtml(r.labelItem)}<br>S/N ${escapeHtml(r.docSn)} ↔ ${escapeHtml(r.labelSn)}</span></div>`;
     }).join('') : '<div class="muted">아직 검증된 제품이 없습니다.</div>';
     const author=$('author').value.trim()||'미입력', line=$('line').value.trim()||'미입력';
     const failRows=records.filter(r=>r.result==='FAIL').map(r=>`#${r.no} 제품코드 ${r.docItem} / ${r.labelItem} · S/N ${r.docSn} / ${r.labelSn}`).join('\n');
     const retryRows=records.filter(r=>r.result==='PASS' && r.history && r.history.includes('FAIL')).map(r=>`#${r.no} ${r.docItem} · ${r.docSn} (FAIL ${r.history.filter(x=>x==='FAIL').length}회 후 PASS)`).join('\n');
+    const viaRows=records.filter(r=>r.via && r.result==='PASS').map(r=>`#${r.no} ${r.docItem} · ${r.docSn} (${r.via})`).join('\n');
     const period = records.length ? (()=>{ const a=fmt(records[0].ts), b=fmt(records.reduce((m,r)=>r.ts>m?r.ts:m, records[0].ts)); return a.slice(0,10)===b.slice(0,10) ? `${a} ~ ${b.slice(11)}` : `${a} ~ ${b}`; })() : fmt(new Date());
-    $('message').value = `[SCM 제품 검증 결과]\n일시 : ${period}\n작성자 : ${author}\nLine : ${line}\n총 검증 : ${records.length}EA\nPASS : ${pass}EA\nFAIL : ${fail}EA\n결과 : ${fail===0 && records.length>0 ? '이상 없음' : records.length ? '확인 필요' : '미검증'}${failRows ? '\n\n[FAIL 내역]\n'+failRows : ''}${retryRows ? '\n\n[재검증 후 PASS]\n'+retryRows : ''}`;
+    $('message').value = `[SCM 제품 검증 결과]\n일시 : ${period}\n작성자 : ${author}\nLine : ${line}\n총 검증 : ${records.length}EA\nPASS : ${pass}EA\nFAIL : ${fail}EA\n결과 : ${fail===0 && records.length>0 ? '이상 없음' : records.length ? '확인 필요' : '미검증'}${failRows ? '\n\n[FAIL 내역]\n'+failRows : ''}${retryRows ? '\n\n[재검증 후 PASS]\n'+retryRows : ''}${viaRows ? '\n\n[S/N 글자·입력 대조 PASS]\n'+viaRows : ''}`;
   }
 
   // ===== 제품 단위 흐름 =====
@@ -236,6 +276,10 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     const hint = slot==='b' ? cur.a.itemNo : '';
     const k = extractKeys(raw, hint);
     const rec = {raw, format, itemNo:k.itemNo, sn:k.sn};
+    if((!rec.itemNo || !rec.sn) && slot==='b' && textHas(raw, cur.a.sn)){
+      ignore.set(raw, Date.now());
+      passBySn('S/N 코드', `S/N만 담긴 코드로 S/N 일치 · ${cur.a.sn}`); return;
+    }
     if(!rec.itemNo || !rec.sn){
       ignore.set(raw, Date.now());
       paint(slot, rec);
@@ -247,7 +291,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     else { setStatus('첫 번째 QR 완료. 이어서 두 번째 QR을 비추세요.','wait'); camMsg(idleCam()); }
   }
 
-  function comparePair(){
+  function comparePair(via, note){
     const d=cur.a, l=cur.b;
     const itemOk = d.itemNo === l.itemNo, snOk = d.sn === l.sn, ok = itemOk && snOk;
     const now = Date.now();
@@ -256,17 +300,17 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     if(ok){
       const dup = records.find(r => r.no !== cur.recNo && r.result==='PASS' && r.docItem===d.itemNo && r.docSn===d.sn);
       if(dup){
-        cur.result='DUP';
+        cur.result='DUP'; updateUI();
         showHero('bad','중복', `이미 #${dup.no}에서 PASS된 제품입니다 · ${d.itemNo} · ${d.sn}`);
         setStatus('이미 검증된 S/N입니다. 중복으로 집계하지 않았습니다. [다음 제품]을 눌러 진행하세요.','bad');
         flash('bad','중복'); buzz([150,80,150]); beep(300,.25); beep(300,.25,.35); camMsg('중복 — 확인 후 [다음 제품]');
         $('nextBtn').disabled=false; save(); return;
       }
     }
-    cur.result = ok ? 'PASS' : 'FAIL';
-    showHero(ok?'ok':'bad', ok?'PASS':'FAIL', ok ? `제품코드/S/N 일치 · ${d.itemNo} · ${d.sn}` : `${itemOk?'제품코드 일치':'제품코드 불일치'} / ${snOk?'S/N 일치':'S/N 불일치'}`);
+    cur.result = ok ? 'PASS' : 'FAIL'; updateUI();
+    showHero(ok?'ok':'bad', ok?'PASS':'FAIL', ok ? (note || `제품코드/S/N 일치 · ${d.itemNo} · ${d.sn}`) : `${itemOk?'제품코드 일치':'제품코드 불일치'} / ${snOk?'S/N 일치':'S/N 불일치'}`);
 
-    const data = {ts:new Date().toISOString(), docItem:d.itemNo, labelItem:l.itemNo, docSn:d.sn, labelSn:l.sn, itemOk, snOk, result:cur.result, docRaw:d.raw, labelRaw:l.raw};
+    const data = {ts:new Date().toISOString(), docItem:d.itemNo, labelItem:l.itemNo, docSn:d.sn, labelSn:l.sn, itemOk, snOk, result:cur.result, docRaw:d.raw, labelRaw:l.raw, via:via||''};
     const existing = cur.recNo && records.find(r => r.no===cur.recNo);
     if(existing){ existing.history = (existing.history||[]).concat(existing.result); Object.assign(existing, data); }
     else { const no = records.reduce((m,r)=>Math.max(m,r.no),0)+1; records.push({no, ...data, history:[]}); cur.recNo = no; }
@@ -279,11 +323,121 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
         setStatus('PASS. 잠시 후 다음 제품으로 넘어갑니다.','ok'); camMsg('PASS — 다음 제품 준비');
         paused = true; autoTimer = setTimeout(()=>{ paused=false; newProduct(false); }, AUTO_NEXT_MS);
       } else {
-        setStatus('제품코드와 S/N이 모두 일치합니다. [다음 제품]을 누르세요.','ok'); camMsg('PASS');
+        setStatus(via ? `S/N ${via} 대조로 PASS 처리했습니다. [다음 제품]을 누르세요.` : '제품코드와 S/N이 모두 일치합니다. [다음 제품]을 누르세요.','ok'); camMsg('PASS');
       }
     } else {
       flash('bad','FAIL'); buzz([300,100,300,100,300]); beep(300,.3); beep(300,.3,.4);
       setStatus('제품코드 또는 S/N이 일치하지 않습니다. 제품/라벨 확인 후 [현재 제품 다시 스캔]으로 재검증하세요.','bad'); camMsg('FAIL — 확인 필요');
+    }
+  }
+
+  // ===== S/N 대조 (QR이 안 읽힐 때) =====
+  function normSn(v){ return String(v||'').toUpperCase().replace(/[^0-9A-Z]/g,''); }
+  function splitTokens(t){ return String(t||'').toUpperCase().split(/[\s|:=,;]+/).filter(Boolean); }
+  // 글자 덩어리(공백·기호로 나눈 단위)가 S/N과 '완전히' 같을 때만 일치 (한 글자 차이는 불일치)
+  function textHas(text, target){
+    const tg = normSn(target); if(!tg) return false;
+    const tk = splitTokens(text).map(normSn).filter(Boolean);
+    for(let i=0;i<tk.length;i++){
+      if(tk[i]===tg) return true;
+      if(i+1<tk.length && tk[i]+tk[i+1]===tg) return true;
+    }
+    return false;
+  }
+  function passBySn(via, note){
+    if(!cur.a || cur.b || cur.result) return;
+    cur.b = {raw:`(${via}로 대조)`, format:via, itemNo:cur.a.itemNo, sn:cur.a.sn, via};
+    paint('b', cur.b); buzz(40); beep(1400,.06); save();
+    comparePair(via, note);
+  }
+  function loadTesseract(){
+    return new Promise((res, rej)=>{
+      if(window.Tesseract) return res();
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      sc.onload = res; sc.onerror = ()=>rej(new Error('글자 인식 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.'));
+      document.head.appendChild(sc);
+    });
+  }
+  async function getOcr(){
+    if(ocrWorker) return ocrWorker;
+    await loadTesseract();
+    ocrWorker = await Tesseract.createWorker('eng');
+    try{ await ocrWorker.setParameters({tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/:. ', tessedit_pageseg_mode:'11'}); }catch(e){}
+    return ocrWorker;
+  }
+  async function ocrCompare(){
+    if(!cur.a || cur.b || cur.result) return;
+    if(!stream){ setStatus('카메라를 켠 상태에서 라벨의 S/N 글자를 비추고 눌러 주세요.','bad'); return; }
+    ocrBusy = true; $('ocrBtn').disabled = true;
+    setStatus('S/N 글자를 인식하는 중입니다… (처음 한 번은 인식 데이터를 내려받느라 오래 걸릴 수 있습니다. 폰을 고정해 주세요)','wait'); camMsg('글자 인식 중…');
+    try{
+      const w = await getOcr();
+      const f = enhancedFrame(1600); if(!f) throw new Error('카메라 화면을 가져오지 못했습니다.');
+      const r = await w.recognize(f.canvas);
+      const text = (r && r.data && r.data.text) || '';
+      if(textHas(text, cur.a.sn)){
+        const itemFound = textHas(text, cur.a.itemNo);
+        passBySn('S/N 글자', itemFound ? `S/N·제품코드 글자 모두 일치 · ${cur.a.itemNo} · ${cur.a.sn}` : `S/N 글자 일치 · ${cur.a.sn} (제품코드는 글자로 확인되지 않음)`);
+      } else {
+        setStatus('글자에서 S/N을 찾지 못했습니다. S/N 글자가 화면 가득 크고 선명하게 보이도록 비추고 다시 누르거나, 아래에 직접 입력하세요.','bad'); camMsg('S/N을 찾지 못함'); buzz(200); beep(220,.3);
+      }
+    }catch(e){
+      setStatus('글자 인식을 사용할 수 없습니다: '+(e.message||e)+' 아래 [직접 입력]으로 대조할 수 있습니다.','bad');
+    }finally{ ocrBusy = false; $('ocrBtn').disabled = false; }
+  }
+  function manualCompare(){
+    if(!cur.a || cur.b || cur.result) return;
+    const v = $('manualSn').value.trim();
+    if(!v){ setStatus('라벨에 적힌 S/N을 입력하세요.','bad'); return; }
+    if(normSn(v) === normSn(cur.a.sn)){ $('manualSn').value=''; passBySn('직접 입력', `직접 입력한 S/N 일치 · ${cur.a.sn}`); }
+    else {
+      setStatus(`입력한 S/N(${v})이 첫 번째 QR의 S/N(${cur.a.sn})과 다릅니다. 다시 입력하거나, 실제로 다른 제품이면 [불일치로 FAIL 기록]을 누르세요.`,'bad');
+      $('failBtn').hidden = false; buzz([300,100,300]); beep(300,.3);
+    }
+  }
+  function manualFail(){
+    if(!cur.a || cur.b || cur.result) return;
+    const v = $('manualSn').value.trim(); if(!v) return;
+    cur.b = {raw:'(직접 입력)', format:'직접 입력', itemNo:cur.a.itemNo, sn:v.toUpperCase().replace(/\s+/g,''), via:'직접 입력'};
+    paint('b', cur.b); $('manualSn').value=''; save();
+    comparePair('직접 입력');
+  }
+
+  // ===== 어두운 곳 보정 + 인식 표시 =====
+  function enhancedFrame(maxW){
+    const vw = video.videoWidth, vh = video.videoHeight; if(!vw || !vh) return null;
+    const sc = Math.min(1, maxW/vw), w = Math.round(vw*sc), h = Math.round(vh*sc);
+    enhCv.width = w; enhCv.height = h; enhCtx.drawImage(video, 0, 0, w, h);
+    const img = enhCtx.getImageData(0, 0, w, h), d = img.data, n = w*h;
+    const lum = new Uint8Array(n), hist = new Uint32Array(256); let sum = 0;
+    for(let i=0;i<n;i++){ const j=i*4, y=(d[j]*77 + d[j+1]*150 + d[j+2]*29) >> 8; lum[i]=y; hist[y]++; sum+=y; }
+    const avg = sum/n; let acc = 0, lo = 0, hi = 255; const t1 = n*0.02, t2 = n*0.98;
+    for(let v=0; v<256; v++){ acc += hist[v]; if(acc >= t1){ lo = v; break; } }
+    acc = 0; for(let v=0; v<256; v++){ acc += hist[v]; if(acc >= t2){ hi = v; break; } }
+    if(hi - lo < 20) hi = Math.min(255, lo + 20);
+    const gain = 255/(hi-lo), gamma = avg < 90 ? 0.6 : 0.85, lut = new Uint8Array(256);
+    for(let v=0; v<256; v++){ let x=(v-lo)*gain; x = x<0?0:x>255?255:x; lut[v] = Math.round(255*Math.pow(x/255, gamma)); }
+    for(let i=0;i<n;i++){ const j=i*4, v=lut[lum[i]]; d[j]=d[j+1]=d[j+2]=v; d[j+3]=255; }
+    enhCtx.putImageData(img, 0, 0);
+    return {canvas:enhCv, avg};
+  }
+  function drawOverlay(codes){
+    const cv = $('ov'), r = cv.getBoundingClientRect();
+    const cw = Math.round(r.width), ch = Math.round(r.height);
+    if(cv.width !== cw || cv.height !== ch){ cv.width = cw; cv.height = ch; }
+    const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height);
+    const vw = video.videoWidth, vh = video.videoHeight; if(!vw || !vh || !codes.length) return;
+    const sc = Math.max(cv.width/vw, cv.height/vh), ox = (cv.width - vw*sc)/2, oy = (cv.height - vh*sc)/2;
+    for(const c of codes){
+      const raw = c.rawValue; let color = '#facc15', dash = [];                       // 노랑: 인식 중
+      if((cur.a && cur.a.raw===raw) || (cur.b && cur.b.raw===raw)) color = '#22c55e';   // 초록: 인식 완료
+      else if(ignore.has(raw)){ color = '#9aa3ad'; dash = [8,6]; }                     // 회색 점선: 이미 끝난 코드
+      g.lineWidth = 5; g.strokeStyle = color; g.setLineDash(dash); g.beginPath();
+      const pts = (c.cornerPoints && c.cornerPoints.length===4) ? c.cornerPoints : null;
+      if(pts){ pts.forEach((p,i)=>{ const x=ox+p.x*sc, y=oy+p.y*sc; i ? g.lineTo(x,y) : g.moveTo(x,y); }); g.closePath(); }
+      else if(c.boundingBox){ const b=c.boundingBox; g.rect(ox+b.x*sc, oy+b.y*sc, b.width*sc, b.height*sc); }
+      g.stroke();
     }
   }
 
@@ -299,14 +453,19 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   }
 
   function handleFrame(codes){
+    drawOverlay(codes);
     const now = Date.now();
     for(const c of codes){ if(ignore.has(c.rawValue)) ignore.set(c.rawValue, now); }   // 아직 화면에 있으면 갱신
     for(const [raw, t] of ignore){ if(now - t > RELEASE_MS) ignore.delete(raw); }      // 사라진 지 오래되면 해제
     const fresh = [...new Set(codes.map(c => c.rawValue).filter(r => !ignore.has(r)))];
-    if(!fresh.length){ stable = {raw:'', n:0}; if(!cur.result && !viewHidden && stream) camMsg(idleCam()); return; }
+    if(!fresh.length){
+      if(stable.raw){ stable.miss = (stable.miss||0) + 1; if(stable.miss > 3) stable = {raw:'', n:0, miss:0}; }   // 어두울 때 1~3프레임 놓쳐도 진행 유지
+      if(!stable.raw && !cur.result && !viewHidden && stream) camMsg(idleCam());
+      return;
+    }
     if(fresh.length > 1){ stable = {raw:'', n:0}; camMsg('코드가 여러 개 보입니다. 하나만 비춰 주세요'); return; }
     const raw = fresh[0];
-    stable = (stable.raw === raw) ? {raw, n:stable.n+1} : {raw, n:1};
+    stable = (stable.raw === raw) ? {raw, n:stable.n+1, miss:0} : {raw, n:1, miss:0};
     if(stable.n < need){ camMsg(`인식 중… 그대로 유지 (${stable.n}/${need})`); return; }   // 설정한 횟수만큼 연속으로 읽혀야 인정
     if((cur.a && cur.a.raw === raw) || (cur.b && cur.b.raw === raw)) return;   // 이미 받은 코드
     const fmtName = (codes.find(c => c.rawValue === raw)||{}).format || '';
@@ -315,9 +474,24 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   }
 
   async function tick(){
-    if(busy || paused || viewHidden || Date.now()-lastScroll < 400 || !video.videoWidth) return;
+    if(busy || paused || ocrBusy || viewHidden || Date.now()-lastScroll < 400 || !video.videoWidth) return;
     busy = true;
-    try{ const codes = (await detector.detect(video)).filter(c => c.rawValue); handleFrame(codes); }
+    try{
+      let codes = (await detector.detect(video)).filter(c => c.rawValue);
+      if(codes.length){ dark = false; emptyTicks = 0; }
+      else if($('enh').checked && (++emptyTicks % 2 === 0)){          // 못 찾았을 때만, 2번에 1번 밝기·대비 보정본으로 재시도
+        const f = enhancedFrame(1280);
+        if(f){
+          dark = f.avg < 70;
+          const found = (await detector.detect(f.canvas)).filter(c => c.rawValue);
+          const k = video.videoWidth / f.canvas.width;
+          codes = found.map(c => ({rawValue:c.rawValue, format:c.format,
+            boundingBox: c.boundingBox ? {x:c.boundingBox.x*k, y:c.boundingBox.y*k, width:c.boundingBox.width*k, height:c.boundingBox.height*k} : null,
+            cornerPoints: (c.cornerPoints||[]).map(p => ({x:p.x*k, y:p.y*k}))}));
+        }
+      }
+      handleFrame(codes);
+    }
     catch(e){} finally{ busy = false; }
   }
 
@@ -343,6 +517,12 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
       video.srcObject = stream; await video.play();
       track = stream.getVideoTracks()[0];
       try{ await track.applyConstraints({advanced:[{focusMode:'continuous'}]}); }catch(e){}
+      try{
+        const c0 = (track.getCapabilities && track.getCapabilities()) || {};
+        if(c0.exposureMode && c0.exposureMode.includes('continuous')){ try{ await track.applyConstraints({advanced:[{exposureMode:'continuous'}]}); }catch(e){} }
+        if(c0.exposureCompensation){ const ec = c0.exposureCompensation, v = Math.max(ec.min, Math.min(1, ec.max/2)); try{ await track.applyConstraints({advanced:[{exposureCompensation:v}]}); }catch(e){} }
+        if(c0.whiteBalanceMode && c0.whiteBalanceMode.includes('continuous')){ try{ await track.applyConstraints({advanced:[{whiteBalanceMode:'continuous'}]}); }catch(e){} }
+      }catch(e){}
       const caps = (track.getCapabilities && track.getCapabilities()) || {};
       $('torchBtn').hidden = !caps.torch; torchOn=false; $('torchBtn').textContent='플래시 켜기';
       if(caps.zoom){ const z=$('zoom'); z.min=caps.zoom.min; z.max=caps.zoom.max; z.step=caps.zoom.step||0.1; z.value=caps.zoom.min; z.hidden=false; } else $('zoom').hidden=true;
@@ -356,7 +536,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     }
   }
   function stopCam(){
-    clearInterval(timer); timer=null;
+    clearInterval(timer); timer=null; dark=false; try{ drawOverlay([]); }catch(e){}
     if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; track=null; }
     video.srcObject=null; try{ wake && wake.release(); }catch(e){} wake=null;
     $('camBtn').textContent='카메라 시작'; $('camBtn').classList.remove('secondary'); $('torchBtn').hidden=true; $('zoom').hidden=true;
@@ -407,6 +587,9 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     $('message').focus(); $('message').select();
     try{ return document.execCommand('copy'); }catch(e){ return false; }
   }
+  $('ocrBtn').addEventListener('click', ocrCompare);
+  $('manualBtn').addEventListener('click', manualCompare);
+  $('failBtn').addEventListener('click', manualFail);
   $('nextBtn').addEventListener('click',()=>newProduct(false));
   $('retryBtn').addEventListener('click',()=>newProduct(true));
   $('author').addEventListener('input',()=>{renderSummary(); save();}); $('line').addEventListener('input',()=>{renderSummary(); save();});
@@ -416,6 +599,12 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     if(navigator.share){ try{ await navigator.share({title:'SCM 제품 S/N 검증 결과',text}); return; }catch(e){ if(e && e.name==='AbortError') return; } }
     const ok = await copyText(text);
     alert(ok ? '메시지를 복사했습니다. 카카오톡에 붙여넣어 주세요.' : '메시지를 전체 선택했습니다. 복사 후 카카오톡에 붙여넣어 주세요.');
+  });
+  $('linkShareBtn').addEventListener('click', async ()=>{
+    const url = location.origin + location.pathname;
+    if(navigator.share){ try{ await navigator.share({title:'SCM 제품검증', url}); return; }catch(e){ if(e && e.name==='AbortError') return; } }
+    const ok = await copyText(url);
+    alert(ok ? '링크를 복사했습니다. 카카오톡에 붙여넣어 보내세요.' : url);
   });
   $('selectBtn').addEventListener('click',async()=>{ renderSummary(); const ok=await copyText($('message').value); if(ok) setStatus('메시지를 복사했습니다.','ok'); });
   $('resetBtn').addEventListener('click',()=>{ if(!confirm('누적 검증 결과를 모두 초기화할까요?')) return; records=[]; ignore=new Map(); newProduct(false); renderSummary(); save(); });
