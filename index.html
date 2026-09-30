@@ -74,6 +74,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     <input id="zoom" type="range" hidden>
     <label class="chk"><input type="checkbox" id="auto" checked>PASS면 자동으로 다음 제품으로 넘기기</label>
     <label class="chk"><input type="checkbox" id="enh" checked>어두운 곳 인식 강화 (밝기·대비 자동 보정)</label>
+    <label class="chk"><input type="checkbox" id="autoOcr" checked>두 번째 QR이 안 읽히면 S/N 글자를 자동 인식해 대조</label>
     <label for="sens" style="margin-top:12px">인식 확정 시간 (짧을수록 빨리 인식, 길수록 오인식 감소)</label>
     <select id="sens">
       <option value="fast">빠름 (약 0.3초)</option>
@@ -96,8 +97,12 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
 
     <div id="fallbackPanel" class="step" hidden>
       <div class="stephead"><b>두 번째 QR이 안 읽히나요?</b></div>
-      <p class="muted">라벨이 접히거나 가려져 QR이 안 읽히면, 첫 번째 QR의 S/N을 라벨의 글자에서 찾아 대조합니다. 일치하면 PASS로 기록하고 '[S/N 대조]'로 표시됩니다.</p>
-      <button id="ocrBtn" class="btn secondary" type="button">S/N 글자 인식으로 대조 (카메라로 S/N 글자를 크게 비추고 누르기)</button>
+      <p class="muted">첫 번째 QR 후 두 번째가 2초 안에 안 읽히면, 카메라에 비친 <b>라벨의 S/N 글자</b>를 자동으로 읽어 아래 S/N과 대조합니다. 일치하면 자동으로 PASS 처리하고 '[S/N 대조]'로 기록합니다. S/N 글자가 화면 가운데에 크고 선명하게 보이도록 비춰 주세요.</p>
+      <div class="muted">찾는 S/N</div><div id="targetSn" class="sn"></div>
+      <div id="ocrInfo" class="muted" style="margin-top:6px"></div>
+      <div id="ocrLast" class="raw" style="min-height:0"></div>
+      <button id="ocrCandBtn" class="btn secondary" type="button" hidden></button>
+      <button id="ocrBtn" class="btn secondary" type="button">지금 바로 글자 인식 (자동 인식을 기다리지 않고 실행)</button>
       <label for="manualSn" style="margin-top:12px">또는 라벨에 적힌 S/N 직접 입력</label>
       <input type="text" id="manualSn" placeholder="예: 라벨의 S/N 그대로" autocapitalize="characters" autocomplete="off">
       <button id="manualBtn" class="btn secondary" type="button">입력한 S/N으로 대조</button>
@@ -161,7 +166,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     <div class="row"><button id="linkShareBtn" class="primary" type="button">앱 링크 공유</button></div>
   </div>
 
-  <div class="foot">v4 동작 방식: 카메라 영상을 약 0.13초 간격으로 분석해 QR/DataMatrix를 찾습니다. 같은 코드가 설정한 횟수(빠름 2회·보통 5회·느림 8회)만큼 연속으로 읽혀야 인정(오인식 방지)하며, 화면에 서로 다른 코드가 2개 이상 보이면 인식하지 않습니다. 어두운 곳에서는 밝기·대비를 자동 보정해 재시도하고(플래시 권장), 1~3프레임 놓쳐도 인식 진행이 끊기지 않습니다. 화면 왼쪽 위 '0 | 2'는 읽은 QR 개수이며 인식 중인 코드는 노란 테두리, 완료는 초록 테두리로 표시됩니다. 두 번째 QR이 안 읽히면 S/N 글자 인식(인터넷 필요) 또는 직접 입력으로 대조할 수 있고, 이 경우 '[S/N 대조]'로 기록됩니다(제품코드는 확인되지 않음). 카메라 화면이 절반 이상 스크롤로 가려지면 스캔이 자동으로 멈추고, 스크롤하는 동안에도 잠깐 인식을 쉽니다. 제품코드·S/N 추출 규칙과 중복(이미 PASS된 S/N) 차단은 v3와 같습니다. 방금 끝난 제품의 QR은 화면에서 벗어날 때까지 무시하므로 다음 제품으로 자연스럽게 넘어갑니다. PASS는 짧은 '삑' 1회, FAIL/중복은 길게 2회 소리와 진동이 나며 FAIL·중복은 자동으로 넘어가지 않고 멈춥니다. 검증 결과는 이 브라우저에 자동 저장되며 '전체 초기화'로만 지워지고(임시저장 목록은 유지), 첫 번째 QR만 읽은 상태도 복원됩니다. 이름을 붙인 임시저장과 백업 파일 저장/불러오기도 지원합니다. 스캔·입력이 있을 때마다 즉시 저장하고, 추가로 30초마다·화면을 벗어날 때 자동 백업을 따로 남깁니다. 실시간 카메라는 HTTPS 주소(또는 localhost)에서만 동작할 수 있습니다.</div>
+  <div class="foot">v4 동작 방식: 카메라 영상을 약 0.13초 간격으로 분석해 QR/DataMatrix를 찾습니다. 같은 코드가 설정한 횟수(빠름 2회·보통 5회·느림 8회)만큼 연속으로 읽혀야 인정(오인식 방지)하며, 화면에 서로 다른 코드가 2개 이상 보이면 인식하지 않습니다. 어두운 곳에서는 밝기·대비를 자동 보정해 재시도하고(플래시 권장), 1~3프레임 놓쳐도 인식 진행이 끊기지 않습니다. 화면 왼쪽 위 '0 | 2'는 읽은 QR 개수이며 인식 중인 코드는 노란 테두리, 완료는 초록 테두리로 표시됩니다. 두 번째 QR이 2초 안에 안 읽히면 카메라에 비친 S/N 글자를 자동으로 읽어(글자 인식, 인터넷 필요) 첫 번째 QR의 S/N과 대조하고(O/0·I/L/1은 같은 글자로 보며 그 외에는 정확히 일치해야 PASS, 한두 글자만 다르게 읽히면 확인 버튼으로 직접 확인), 직접 입력으로도 대조할 수 있으며 이 경우 '[S/N 대조]'로 기록됩니다(제품코드는 확인되지 않음). 카메라 화면이 절반 이상 스크롤로 가려지면 스캔이 자동으로 멈추고, 스크롤하는 동안에도 잠깐 인식을 쉽니다. 제품코드·S/N 추출 규칙과 중복(이미 PASS된 S/N) 차단은 v3와 같습니다. 방금 끝난 제품의 QR은 화면에서 벗어날 때까지 무시하므로 다음 제품으로 자연스럽게 넘어갑니다. PASS는 짧은 '삑' 1회, FAIL/중복은 길게 2회 소리와 진동이 나며 FAIL·중복은 자동으로 넘어가지 않고 멈춥니다. 검증 결과는 이 브라우저에 자동 저장되며 '전체 초기화'로만 지워지고(임시저장 목록은 유지), 첫 번째 QR만 읽은 상태도 복원됩니다. 이름을 붙인 임시저장과 백업 파일 저장/불러오기도 지원합니다. 스캔·입력이 있을 때마다 즉시 저장하고, 추가로 30초마다·화면을 벗어날 때 자동 백업을 따로 남깁니다. 실시간 카메라는 HTTPS 주소(또는 localhost)에서만 동작할 수 있습니다.</div>
 </div>
 
 <script>
@@ -175,6 +180,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   let ignore = new Map();              // raw -> 마지막으로 화면에서 본 시각
   let stable = {raw:'', n:0};
   let viewHidden=false, lastScroll=0, ocrBusy=false, dark=false, emptyTicks=0, lastN=0, ocrWorker=null;
+  let ocrRunning=false, ocrReady=false, ocrFail=false, ocrLoading=false, aSince=0, ocrRuns=0, ocrCand=null, fbShown=false;
+  const ocrCv = document.createElement('canvas'); const ocrCtx = ocrCv.getContext('2d', {willReadFrequently:true});
   const enhCv = document.createElement('canvas'); const enhCtx = enhCv.getContext('2d', {willReadFrequently:true});
   const SENS = {fast:2, normal:5, slow:8}; const SENS_KEY='scm_sens_v4'; let need = SENS.normal;
   let stream=null, track=null, timer=null, busy=false, paused=false, autoTimer=null, detector=null, wake=null, wasOn=false, torchOn=false, actx=null;
@@ -233,6 +240,9 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     if(n !== lastN){ lastN = n; if(n>0){ void c.offsetWidth; c.classList.add('pop'); } }
     const showFb = !!cur.a && !cur.b && !cur.result;
     $('fallbackPanel').hidden = !showFb;
+    if(showFb && !fbShown){ aSince = Date.now(); ocrRuns = 0; ocrCand = null; $('ocrCandBtn').hidden = true; $('ocrLast').textContent = ''; }
+    fbShown = showFb;
+    $('targetSn').textContent = showFb && cur.a ? cur.a.sn : '';
     if(!showFb) $('failBtn').hidden = true;
   }
   function paint(slot, rec){
@@ -375,22 +385,73 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   async function ocrCompare(){
     if(!cur.a || cur.b || cur.result) return;
     if(!stream){ setStatus('카메라를 켠 상태에서 라벨의 S/N 글자를 비추고 눌러 주세요.','bad'); return; }
-    ocrBusy = true; $('ocrBtn').disabled = true;
+    if(ocrRunning){ setStatus('자동 글자 인식이 진행 중입니다. 잠시 후 다시 눌러 주세요.','wait'); return; }
+    ocrFail = false; ocrBusy = true; $('ocrBtn').disabled = true;
     setStatus('S/N 글자를 인식하는 중입니다… (처음 한 번은 인식 데이터를 내려받느라 오래 걸릴 수 있습니다. 폰을 고정해 주세요)','wait'); camMsg('글자 인식 중…');
     try{
-      const w = await getOcr();
-      const f = enhancedFrame(1600); if(!f) throw new Error('카메라 화면을 가져오지 못했습니다.');
+      const w = await getOcr(); ocrReady = true; setOcrInfo('글자 인식 준비 완료');
+      const f = enhancedFrame(1600, false, ocrCv, ocrCtx); if(!f) throw new Error('카메라 화면을 가져오지 못했습니다.');
       const r = await w.recognize(f.canvas);
-      const text = (r && r.data && r.data.text) || '';
-      if(textHas(text, cur.a.sn)){
-        const itemFound = textHas(text, cur.a.itemNo);
-        passBySn('S/N 글자', itemFound ? `S/N·제품코드 글자 모두 일치 · ${cur.a.itemNo} · ${cur.a.sn}` : `S/N 글자 일치 · ${cur.a.sn} (제품코드는 글자로 확인되지 않음)`);
-      } else {
-        setStatus('글자에서 S/N을 찾지 못했습니다. S/N 글자가 화면 가득 크고 선명하게 보이도록 비추고 다시 누르거나, 아래에 직접 입력하세요.','bad'); camMsg('S/N을 찾지 못함'); buzz(200); beep(220,.3);
-      }
+      const res = handleOcrText((r && r.data && r.data.text) || '');
+      if(res === 'cand') setStatus('S/N과 비슷한 글자가 읽혔습니다. 아래 확인 버튼으로 라벨과 같은지 확인하세요.','wait');
+      else if(res === 'none'){ setStatus('글자에서 S/N을 찾지 못했습니다. S/N 글자가 화면 가운데에 크고 선명하게 보이도록 비추고 다시 시도하거나, 아래에 직접 입력하세요.','bad'); camMsg('S/N을 찾지 못함'); buzz(200); beep(220,.3); }
     }catch(e){
       setStatus('글자 인식을 사용할 수 없습니다: '+(e.message||e)+' 아래 [직접 입력]으로 대조할 수 있습니다.','bad');
     }finally{ ocrBusy = false; $('ocrBtn').disabled = false; }
+  }
+  // ===== S/N 글자 자동 인식 =====
+  function setOcrInfo(t){ $('ocrInfo').textContent = t; }
+  // 글자 인식(OCR)에서만: O↔0, I·L↔1 은 같은 글자로 취급. 그 밖의 글자는 정확히 같아야 함
+  function foldOcr(v){ return normSn(v).replace(/O/g,'0').replace(/[IL]/g,'1'); }
+  function lev(a, b){
+    const m = a.length, n = b.length; if(!m) return n; if(!n) return m;
+    let p = Array.from({length:n+1}, (_,j)=>j);
+    for(let i=1;i<=m;i++){ const c=[i]; for(let j=1;j<=n;j++){ c[j] = Math.min(p[j]+1, c[j-1]+1, p[j-1] + (a[i-1]===b[j-1] ? 0 : 1)); } p = c; }
+    return p[n];
+  }
+  // 반환: 'pass'(자동 PASS) | 'cand'(비슷한 글자 → 사람이 확인) | 'none'
+  function handleOcrText(text){
+    if(!cur.a || cur.b || cur.result) return 'none';
+    const tg = foldOcr(cur.a.sn); if(!tg) return 'none';
+    const base = splitTokens(text).map(normSn).filter(Boolean);
+    const cands = [];
+    for(let i=0;i<base.length;i++){ cands.push(base[i]); if(i+1<base.length) cands.push(base[i]+base[i+1]); }
+    let best = null;
+    for(const c of cands){ if(Math.abs(c.length - tg.length) > 2) continue; const d = lev(foldOcr(c), tg); if(!best || d < best.d) best = {c, d}; }
+    $('ocrLast').textContent = '마지막으로 읽은 글자: ' + (String(text||'').replace(/\s+/g,' ').trim().slice(0,100) || '(읽힌 글자 없음)');
+    if(best && best.d === 0){
+      const itemFound = base.some(t => foldOcr(t) === foldOcr(cur.a.itemNo));
+      passBySn('S/N 글자 자동', itemFound ? `S/N·제품코드 글자 모두 일치 · ${cur.a.itemNo} · ${cur.a.sn}` : `S/N 글자 일치 · ${cur.a.sn} (제품코드는 글자로 확인되지 않음)`);
+      return 'pass';
+    }
+    if(best && best.d <= 2 && tg.length >= 8){
+      ocrCand = best.c; $('ocrCandBtn').hidden = false;
+      $('ocrCandBtn').textContent = `비슷하게 읽힘: ${best.c} — 라벨의 S/N이 ${cur.a.sn}와 같으면 눌러서 확인`;
+      return 'cand';
+    }
+    $('ocrCandBtn').hidden = true; ocrCand = null; return 'none';
+  }
+  function preloadOcr(){
+    if(ocrReady || ocrFail || ocrLoading) return;
+    ocrLoading = true; setOcrInfo('글자 인식 준비 중… (처음에는 내려받느라 시간이 걸립니다)');
+    getOcr().then(()=>{ ocrReady = true; setOcrInfo('글자 인식 준비 완료'); })
+      .catch(e=>{ ocrFail = true; setOcrInfo('글자 인식을 쓸 수 없습니다(인터넷 확인): ' + (e.message||e) + ' — 아래에 직접 입력하세요.'); })
+      .finally(()=>{ ocrLoading = false; });
+  }
+  async function autoOcrTick(){
+    if(!$('autoOcr').checked || !stream || ocrRunning || ocrBusy || paused || viewHidden) return;
+    if(!cur.a || cur.b || cur.result || stable.raw) return;          // 두 번째 QR이 인식 진행 중이면 QR 우선
+    if(Date.now() - aSince < 2000) return;                             // 첫 QR 후 2초 동안 두 번째 QR을 기다림
+    if(!ocrReady){ preloadOcr(); return; }
+    ocrRunning = true; ocrRuns++;
+    try{
+      camMsg(`S/N 글자 자동 확인 중… (${ocrRuns}회)`);
+      const f = enhancedFrame(1400, true, ocrCv, ocrCtx); if(!f) return;
+      const w = await getOcr(); const r = await w.recognize(f.canvas);
+      if(!cur.a || cur.b || cur.result) return;                        // 그 사이 QR로 끝났으면 무시
+      const res = handleOcrText((r && r.data && r.data.text) || '');
+      if(res === 'cand') camMsg('S/N과 비슷한 글자 — 아래 확인 버튼을 보세요');
+    }catch(e){} finally{ ocrRunning = false; }
   }
   function manualCompare(){
     if(!cur.a || cur.b || cur.result) return;
@@ -411,11 +472,13 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   }
 
   // ===== 어두운 곳 보정 + 인식 표시 =====
-  function enhancedFrame(maxW){
+  function enhancedFrame(maxW, band, cv, cx){
+    cv = cv || enhCv; cx = cx || enhCtx;
     const vw = video.videoWidth, vh = video.videoHeight; if(!vw || !vh) return null;
-    const sc = Math.min(1, maxW/vw), w = Math.round(vw*sc), h = Math.round(vh*sc);
-    enhCv.width = w; enhCv.height = h; enhCtx.drawImage(video, 0, 0, w, h);
-    const img = enhCtx.getImageData(0, 0, w, h), d = img.data, n = w*h;
+    const sy = band ? vh*0.2 : 0, sh = band ? vh*0.6 : vh;   // band: 화면 가운데 띠(위아래 20% 제외)
+    const sc = Math.min(1, maxW/vw), w = Math.round(vw*sc), h = Math.round(sh*sc);
+    cv.width = w; cv.height = h; cx.drawImage(video, 0, sy, vw, sh, 0, 0, w, h);
+    const img = cx.getImageData(0, 0, w, h), d = img.data, n = w*h;
     const lum = new Uint8Array(n), hist = new Uint32Array(256); let sum = 0;
     for(let i=0;i<n;i++){ const j=i*4, y=(d[j]*77 + d[j+1]*150 + d[j+2]*29) >> 8; lum[i]=y; hist[y]++; sum+=y; }
     const avg = sum/n; let acc = 0, lo = 0, hi = 255; const t1 = n*0.02, t2 = n*0.98;
@@ -425,8 +488,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     const gain = 255/(hi-lo), gamma = avg < 90 ? 0.6 : 0.85, lut = new Uint8Array(256);
     for(let v=0; v<256; v++){ let x=(v-lo)*gain; x = x<0?0:x>255?255:x; lut[v] = Math.round(255*Math.pow(x/255, gamma)); }
     for(let i=0;i<n;i++){ const j=i*4, v=lut[lum[i]]; d[j]=d[j+1]=d[j+2]=v; d[j+3]=255; }
-    enhCtx.putImageData(img, 0, 0);
-    return {canvas:enhCv, avg};
+    cx.putImageData(img, 0, 0);
+    return {canvas:cv, avg};
   }
   function drawOverlay(codes){
     const cv = $('ov'), r = cv.getBoundingClientRect();
@@ -568,6 +631,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
       clearInterval(timer); timer = setInterval(tick, 130);
       $('camBtn').textContent='카메라 끄기'; $('camBtn').classList.add('secondary');
       camMsg('QR을 사각형 안에 비추세요'); setStatus(idleText(),'wait'); wasOn=true;
+      if($('autoOcr').checked) preloadOcr();
     }catch(e){
       setStatus(camErrText(e) + ' [진단: ' + ((e && e.name) || 'Error') + ' · ' + location.protocol + ' · ' + (window.isSecureContext ? '보안연결' : '비보안') + ']','bad');
       $('fallback').open = true; stopCam();
@@ -626,6 +690,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     try{ return document.execCommand('copy'); }catch(e){ return false; }
   }
   $('ocrBtn').addEventListener('click', ocrCompare);
+  $('ocrCandBtn').addEventListener('click', ()=>{ if(cur.a && !cur.b && !cur.result) passBySn('S/N 글자(확인)', `비슷하게 읽힌 글자를 직접 확인해 일치 처리 · ${cur.a.sn}`); });
   $('manualBtn').addEventListener('click', manualCompare);
   $('failBtn').addEventListener('click', manualFail);
   $('nextBtn').addEventListener('click',()=>newProduct(false));
@@ -744,6 +809,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     setStatus(`자동 백업(${fmt(a.ts)})을 복구했습니다. (${records.length}건)`,'ok');
   });
   setInterval(autoBackup, 30000);
+  setInterval(autoOcrTick, 1200);
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) autoBackup(); });
   window.addEventListener('pagehide', autoBackup);
   try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); }catch(e){}
