@@ -28,6 +28,7 @@ select{width:100%;border:1px solid #cbd2da;border-radius:10px;padding:12px;backg
 .counter.ok{background:var(--ok)}.counter.bad{background:var(--bad)}
 .counter.pop{animation:pop .35s}
 @keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
+.camConfirm{position:absolute;left:10px;right:10px;bottom:44px;padding:12px;border:0;border-radius:12px;background:#16a34a;color:#fff;font-weight:900;font-size:15px;box-shadow:0 2px 10px rgba(0,0,0,.4)}
 .flash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:56px;font-weight:1000;color:#fff;opacity:0;pointer-events:none;transition:opacity .15s}
 .flash.ok{background:rgba(19,122,67,.72);opacity:1}.flash.bad{background:rgba(198,40,40,.78);opacity:1}
 .btn{display:block;width:100%;border:0;border-radius:11px;padding:14px 12px;font-weight:900;background:var(--accent);color:#fff;margin-top:10px;cursor:pointer}.btn.secondary{background:#e9edf2;color:#27313b}.btn:disabled{opacity:.45;cursor:not-allowed}
@@ -69,6 +70,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
       <canvas id="ov" class="ov"></canvas>
       <div class="reticle"></div>
       <div id="counter" class="counter">0 | 2</div>
+      <button id="camConfirm" class="camConfirm" type="button" hidden></button>
       <div id="flash" class="flash"></div>
       <div id="camMsg" class="camMsg">카메라 꺼짐 — 아래 [카메라 시작]을 누르세요</div>
     </div>
@@ -103,12 +105,16 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
 
     <div id="fallbackPanel" class="step" hidden>
       <div class="stephead"><b>두 번째 QR이 안 읽히나요?</b></div>
-      <p class="muted">첫 번째 QR 후 두 번째가 2초 안에 안 읽히면, 카메라에 비친 <b>라벨의 S/N 글자</b>를 자동으로 읽어 아래 S/N과 대조합니다. 일치하면 <b>확인 버튼</b>이 나타나며, <b>두 번째 문서의 글자인지 눈으로 확인하고 눌러야</b> PASS로 기록됩니다('[S/N 대조]' 표시). 첫 번째 문서의 인쇄된 글자를 다시 읽은 오판정을 막기 위해서입니다. 라벨의 <b>S/N 글자 한 줄을 화면의 하늘색 점선 박스 안에 크게</b> 맞추면 가장 잘 읽힙니다. 박스 안은 확대해서 여러 방식으로 읽습니다.</p>
+      <p class="muted">첫 번째 QR 후 두 번째가 2초 안에 안 읽히면, 카메라에 비친 <b>라벨의 S/N 글자</b>를 자동으로 읽어 아래 S/N과 대조합니다. 일치하면 <b>확인 버튼</b>이 나타나며, <b>두 번째 문서의 글자인지 눈으로 확인하고 눌러야</b> PASS로 기록됩니다('[S/N 대조]' 표시). 첫 번째 문서의 인쇄된 글자를 다시 읽은 오판정을 막기 위해서입니다. 라벨의 <b>S/N 글자 한 줄을 화면의 하늘색 점선 박스 안에 크게</b> 맞추면 가장 잘 읽힙니다. 박스 안은 확대해서 여러 방식으로 읽습니다. 아래 작은 이미지가 글자 인식이 실제로 보는 화면이고, 읽은 글자는 카메라 화면 아래쪽에도 표시됩니다.</p>
       <div class="muted">찾는 S/N</div><div id="targetSn" class="sn"></div>
       <div id="ocrInfo" class="muted" style="margin-top:6px"></div>
+      <canvas id="ocrPreview" width="1" height="1" style="max-width:100%;border:1px solid #d9dee5;border-radius:8px;background:#f7f9fb;margin-top:6px"></canvas>
       <div id="ocrLast" class="raw" style="min-height:0"></div>
       <button id="ocrCandBtn" class="btn secondary" type="button" hidden></button>
       <button id="ocrBtn" class="btn secondary" type="button">지금 바로 글자 인식 (자동 인식을 기다리지 않고 실행)</button>
+      <label class="btn secondary" for="ocrPhoto" style="text-align:center">S/N 사진 한 장 찍어서 인식 (가장 정확)</label>
+      <input id="ocrPhoto" class="hiddenInput" type="file" accept="image/*" capture="environment">
+      <div class="muted" style="margin-top:4px">영상보다 사진이 훨씬 선명해서 잘 읽힙니다. 두 번째 문서의 S/N 글자가 크게 나오도록 가까이서 찍으세요. 찍은 뒤 10~20초 걸릴 수 있습니다.</div>
       <label for="manualSn" style="margin-top:12px">또는 라벨에 적힌 S/N 직접 입력 (글자가 접혀 안 보이면 보이는 끝자리만 입력해도 됩니다 — S/N 길이의 60% 이상, 예: 10자리면 끝 6자리)</label>
       <input type="text" id="manualSn" placeholder="예: 라벨의 S/N 그대로" autocapitalize="characters" autocomplete="off">
       <div id="manualHint" class="muted" style="margin-top:4px"></div>
@@ -189,7 +195,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   let ignore = new Map();              // raw -> 마지막으로 화면에서 본 시각
   let stable = {raw:'', n:0};
   let viewHidden=false, lastScroll=0, ocrBusy=false, dark=false, emptyTicks=0, lastN=0, ocrWorker=null;
-  let zxSkip=false, ocrRunning=false, ocrReady=false, ocrFail=false, ocrLoading=false, aSince=0, ocrRuns=0, ocrCand=null, ocrCandD=99, ocrCandAt=0, fbShown=false;
+  let ocrDiag='', ocrAvgMs=0, ocrNoteText='', ocrNoteUntil=0, zxSkip=false, ocrRunning=false, ocrReady=false, ocrFail=false, ocrLoading=false, aSince=0, ocrRuns=0, ocrCand=null, ocrCandD=99, ocrCandAt=0, fbShown=false;
   const GUIDE = {x0:.05, x1:.95, y0:.40, y1:.60};     // 화면(미리보기) 기준 S/N 읽기 박스 위치
   let torchCapable=false, ecCaps=null, baseEc=0, curEc=0, torchSince=0, darkCount=0, glareCount=0, flashLockUntil=0, autoLockUntil=0, flashBusy=false, flashNoteText='', flashNoteUntil=0;
   const lsCv = document.createElement('canvas'); lsCv.width = 64; lsCv.height = 48; const lsCtx = lsCv.getContext('2d', {willReadFrequently:true});
@@ -252,10 +258,10 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     if(n !== lastN){ lastN = n; if(n>0){ void c.offsetWidth; c.classList.add('pop'); } }
     const showFb = !!cur.a && !cur.b && !cur.result;
     $('fallbackPanel').hidden = !showFb;
-    if(showFb && !fbShown){ aSince = Date.now(); ocrRuns = 0; ocrCand = null; ocrCandD = 99; $('ocrCandBtn').hidden = true; $('manualHint').textContent = ''; $('ocrLast').textContent = ''; }
+    if(showFb && !fbShown){ aSince = Date.now(); ocrRuns = 0; ocrCand = null; ocrCandD = 99; $('ocrCandBtn').hidden = true; hideCamConfirm(); $('manualHint').textContent = ''; $('ocrLast').textContent = ''; }
     fbShown = showFb;
     $('targetSn').textContent = showFb && cur.a ? cur.a.sn : '';
-    if(!showFb) $('failBtn').hidden = true;
+    if(!showFb){ $('failBtn').hidden = true; hideCamConfirm(); }
   }
   function paint(slot, rec){
     if(!rec){ $(slot+'Item').textContent='제품코드 : —'; $(slot+'Sn').textContent='S/N : —'; $(slot+'Raw').textContent='Raw Data : —'; setState(slot,'','대기'); updateUI(); return; }
@@ -267,7 +273,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   function showHero(cls, big, detail){ $('pairResult').hidden=false; $('pairResult').className='resultHero '+cls; $('pairBig').textContent=big; $('pairDetail').textContent=detail; }
   function fmt(ts){ const d=new Date(ts); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
   function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function idleCam(){ if(Date.now() < flashNoteUntil) return flashNoteText; if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
+  function idleCam(){ if(Date.now() < flashNoteUntil) return flashNoteText; if(Date.now() < ocrNoteUntil) return ocrNoteText; if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
   function idleText(){ return cur.a ? '첫 번째 QR 완료. 이어서 두 번째 QR을 비추세요.' : `${records.length+ (cur.recNo?0:1)}번째 제품: 성적서/반입라벨 QR을 차례로 비추세요.`; }
 
   function renderSummary(){
@@ -397,22 +403,28 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     return ocrWorker;
   }
   // 같은 화면을 여러 읽기 방식(PSM)으로 읽어 보고, 일치하면 즉시 종료. 반환: 'pass' | 'done'(그 사이 QR로 끝남) | 'cand' | 'none'
-  async function ocrPass(f, psms){
+  async function ocrPass(f, psms, label){
     const w = await getOcr();
-    for(const psm of psms){
+    showPreview(f.canvas);
+    const list = (ocrAvgMs > 3500 && psms.length > 1) ? psms.slice(0,2) : psms;      // 기기가 느리면 읽기 방식을 줄여 반복 횟수 확보
+    for(const psm of list){
       try{ await w.setParameters({tessedit_pageseg_mode:String(psm)}); }catch(e){}
-      const r = await w.recognize(f.canvas);
+      const t0 = Date.now(); const r = await w.recognize(f.canvas); const ms = Date.now() - t0;
+      ocrAvgMs = ocrAvgMs ? ocrAvgMs*0.6 + ms*0.4 : ms;
       if(!cur.a || cur.b || cur.result) return 'done';
-      const res = handleOcrText((r && r.data && r.data.text) || '');
-      if(res === 'pass') return 'pass';
+      const text = (r && r.data && r.data.text) || '';
+      ocrDiag = `${label||'읽기'}·방식${psm}·${(ms/1000).toFixed(1)}초`;
+      ocrNote(`읽힘: ${normSn(text).slice(0,26) || '없음'}  (${ocrDiag})`, 5000);
+      const res = handleOcrText(text);
+      if(res === 'pass' || (res === 'cand' && ocrCandD === 0)) return res;      // 정확히 일치하면 나머지 읽기 방식은 생략
     }
     return ocrCand ? 'cand' : 'none';
   }
   function ocrFrame(kind){
     const crop = guideCrop();
-    if(kind === 'band')      return {f:flatFrame(2400, 2600000, crop, ocrCv, ocrCtx, {up:3}), psms:[6,7,11]};                // S/N 박스를 3배 확대 + 조명 보정
-    if(kind === 'bandplain') return {f:flatFrame(2400, 2600000, crop, ocrCv, ocrCtx, {up:3, plain:true}), psms:[6,7,11]};    // S/N 박스를 3배 확대(원본 밝기)
-    return {f:flatFrame(1600, 1600000, null, ocrCv, ocrCtx), psms:[11]};                                                     // 화면 전체
+    if(kind === 'band')      return {f:flatFrame(2400, 2600000, crop, ocrCv, ocrCtx, {up:3}), psms:[6,7,11], label:'박스·보정'};                // S/N 박스를 3배 확대 + 조명 보정
+    if(kind === 'bandplain') return {f:flatFrame(2400, 2600000, crop, ocrCv, ocrCtx, {up:3, plain:true}), psms:[6,7,11], label:'박스·원본'};   // S/N 박스를 3배 확대(원본 밝기)
+    return {f:flatFrame(2000, 2400000, guideCrop(VIEW), ocrCv, ocrCtx, {up:1.5}), psms:[11,6], label:'화면 전체'};                                // 보이는 화면 전체(박스에서 벗어나 있을 때)
   }
   async function ocrCompare(){
     if(!cur.a || cur.b || cur.result) return;
@@ -423,9 +435,9 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     try{
       await getOcr(); ocrReady = true; setOcrInfo('글자 인식 준비 완료');
       let res = 'none';
-      for(const kind of ['band','bandplain','full']){
+      for(const kind of ['band','bandplain','view']){
         const o = ocrFrame(kind); if(!o.f) throw new Error('카메라 화면을 가져오지 못했습니다.');
-        res = await ocrPass(o.f, o.psms);
+        res = await ocrPass(o.f, o.psms, o.label);
         if(res === 'pass' || res === 'done') break;
       }
       if(res === 'cand') setStatus(ocrCandD === 0 ? 'S/N 글자가 일치합니다. 지금 비추는 것이 두 번째 문서가 맞으면 아래 확인 버튼을 누르세요.' : 'S/N과 비슷한 글자가 읽혔습니다. 아래 확인 버튼으로 두 번째 문서와 같은지 확인하세요.','wait');
@@ -436,6 +448,15 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   }
   // ===== S/N 글자 자동 인식 =====
   function setOcrInfo(t){ $('ocrInfo').textContent = t; }
+  function ocrNote(t, ms){ ocrNoteText = t; ocrNoteUntil = Date.now() + (ms || 4000); camMsg(t); }
+  function showCamConfirm(t){ const b = $('camConfirm'); b.textContent = t; b.hidden = false; }
+  function hideCamConfirm(){ $('camConfirm').hidden = true; }
+  function confirmCand(){ if(cur.a && !cur.b && !cur.result) passBySn('S/N 글자(확인)', `읽힌 글자를 두 번째 문서에서 직접 확인해 일치 처리 · ${cur.a.sn}`); }
+  function showPreview(src){   // OCR이 실제로 보는 이미지를 패널에 작게 표시 (박스가 제대로 잡혔는지 확인용)
+    const p = $('ocrPreview'); if(!p || !src || !src.width) return;
+    const sc = Math.min(480/src.width, 160/src.height, 1); p.width = Math.max(1, Math.round(src.width*sc)); p.height = Math.max(1, Math.round(src.height*sc));
+    try{ p.getContext('2d').drawImage(src, 0, 0, p.width, p.height); }catch(e){}
+  }
   // 글자 인식(OCR) 전용 비교: 같은 글자이거나, '숫자 ↔ 모양이 비슷한 글자'(0↔O·Q·D, 1↔I·L, 5↔S, 8↔B, 2↔Z, 6↔G)일 때만 같은 글자로 봄.
   // 글자끼리(예: Q↔O)나 숫자끼리(예: 1↔7)의 차이는 다른 글자로 취급
   const CONF_CLASS = {'0':0,'O':0,'Q':0,'D':0,'1':1,'I':1,'L':1,'5':5,'S':5,'8':8,'B':8,'2':2,'Z':2,'6':6,'G':6};
@@ -458,19 +479,23 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     const tg = normSn(cur.a.sn); if(!tg) return 'none';
     const base = splitTokens(text).map(normSn).filter(Boolean);
     const cands = [];
-    for(let i=0;i<base.length;i++){ cands.push(base[i]); if(i+1<base.length) cands.push(base[i]+base[i+1]); }
+    for(let i=0;i<base.length;i++){ let j = ''; for(let k=i;k<Math.min(base.length,i+4);k++){ j += base[k]; cands.push(j); } }     // 최대 4덩어리까지 이어 붙임 (예: HT-260403 -05)
+    const all = base.join('');
+    for(const L of [tg.length-1, tg.length, tg.length+1]){ if(L < 4) continue; for(let p=0;p+L<=all.length;p++) cands.push(all.substr(p, L)); }   // 다른 글자와 붙어 읽힌 경우(예: ...05AL)
     let best = null;
     for(const c of cands){ if(Math.abs(c.length - tg.length) > 3) continue; const d = lev(c, tg); if(!best || d < best.d) best = {c, d}; }
-    $('ocrLast').textContent = '마지막으로 읽은 글자: ' + (String(text||'').replace(/\s+/g,' ').trim().slice(0,100) || '(읽힌 글자 없음)');
+    $('ocrLast').textContent = '마지막으로 읽은 글자: ' + (String(text||'').replace(/\s+/g,' ').trim().slice(0,100) || '(읽힌 글자 없음)') + (ocrDiag ? '  ['+ocrDiag+']' : '');
     // 정확히 일치해도 자동 PASS 하지 않음: 폰이 아직 '첫 번째 문서'에 인쇄된 S/N을 비추고 있을 수 있어, 두 번째 문서가 맞는지 사람이 확인해야 함
     if(best && best.d === 0){
       ocrCand = best.c; ocrCandD = 0; ocrCandAt = Date.now(); $('ocrCandBtn').hidden = false;
       $('ocrCandBtn').textContent = `S/N 글자 일치(${best.c}) — 지금 비추는 것이 '두 번째 문서'가 맞으면 눌러서 확인`;
+      showCamConfirm(`S/N 글자 일치 (${best.c}) — 두 번째 문서가 맞으면 누르세요`);
       return 'cand';
     }
     if(best && best.d <= Math.max(2, Math.floor(tg.length*0.3)) && tg.length >= 8 && (!ocrCand || best.d < ocrCandD)){
       ocrCand = best.c; ocrCandD = best.d; ocrCandAt = Date.now(); $('ocrCandBtn').hidden = false;
       $('ocrCandBtn').textContent = `비슷하게 읽힘: ${best.c} — 두 번째 문서의 S/N이 ${cur.a.sn}와 같으면 눌러서 확인`;
+      showCamConfirm(`비슷하게 읽힘 (${best.c}) — 같은 S/N이면 누르세요`);
     }
     return ocrCand ? 'cand' : 'none';
   }
@@ -483,18 +508,41 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   }
   async function autoOcrTick(){
     if(!$('autoOcr').checked || !stream || ocrRunning || ocrBusy || paused || viewHidden) return;
-    if(!cur.a || cur.b || cur.result || stable.raw) return;          // 두 번째 QR이 인식 진행 중이면 QR 우선
+    if(!cur.a || cur.b || cur.result || (stable.raw && stable.raw !== cur.a.raw)) return;     // 다른 QR이 인식 진행 중이면 QR 우선 (이미 읽은 첫 QR이 화면에 남아 있는 건 무시)
     if(Date.now() - aSince < 2000) return;                             // 첫 QR 후 2초 동안 두 번째 QR을 기다림
     if(!ocrReady){ preloadOcr(); return; }
-    if(ocrCand && Date.now() - ocrCandAt > 10000){ ocrCand = null; ocrCandD = 99; $('ocrCandBtn').hidden = true; }   // 오래된 후보는 지움
+    if(ocrCand && Date.now() - ocrCandAt > 10000){ ocrCand = null; ocrCandD = 99; $('ocrCandBtn').hidden = true; hideCamConfirm(); }   // 오래된 후보는 지움
     ocrRunning = true; ocrRuns++;
     try{
-      camMsg(`S/N 글자 자동 확인 중… (${ocrRuns}회)`);
-      const kind = ['band','bandplain','full'][(ocrRuns-1) % 3];       // 박스(조명 보정) → 박스(원본) → 화면 전체 순환
+      ocrNote(`S/N 글자 읽는 중… (${ocrRuns}회)`, 6000);
+      const kind = ['band','bandplain','view'][(ocrRuns-1) % 3];       // 박스(조명 보정) → 박스(원본) → 화면 전체 순환
       const o = ocrFrame(kind); if(!o.f) return;
-      const res = await ocrPass(o.f, o.psms);
+      const res = await ocrPass(o.f, o.psms, o.label);
       if(res === 'cand') camMsg(ocrCandD === 0 ? 'S/N 글자 일치 — 두 번째 문서면 아래 [확인]을 누르세요' : 'S/N과 비슷한 글자 — 아래 확인 버튼을 보세요');
     }catch(e){} finally{ ocrRunning = false; }
+  }
+  async function ocrFromPhoto(bmp){      // 사진 한 장(선명·고해상도)에서 S/N 글자 읽기
+    const f = flatFrame(2000, 3000000, null, ocrCv, ocrCtx, {src:bmp}); if(!f) throw new Error('사진을 읽지 못했습니다.');
+    let res = await ocrPass(f, [11,6], '사진');
+    if(res === 'none' || res === 'cand'){            // 한 번 더: 조명 보정 없이 원본 밝기로
+      const g = flatFrame(2000, 3000000, null, ocrCv, ocrCtx, {src:bmp, plain:true});
+      if(g) res = await ocrPass(g, [11], '사진·원본');
+    }
+    return res;
+  }
+  async function handleOcrPhoto(e){
+    const input = e.target, file = input.files && input.files[0]; if(!file) return;
+    if(!cur.a || cur.b || cur.result){ setStatus('먼저 첫 번째 QR을 읽어야 합니다.','bad'); input.value=''; return; }
+    if(ocrRunning || ocrBusy){ setStatus('글자 인식이 진행 중입니다. 잠시 후 다시 시도하세요.','wait'); input.value=''; return; }
+    ocrBusy = true; setStatus('사진에서 S/N 글자를 읽는 중입니다… (10~20초 걸릴 수 있습니다)','wait'); ocrNote('사진 글자 인식 중…', 20000);
+    try{
+      await getOcr(); ocrReady = true; setOcrInfo('글자 인식 준비 완료');
+      const bmp = await createImageBitmap(file);
+      let res; try{ res = await ocrFromPhoto(bmp); } finally{ if(bmp.close) bmp.close(); }
+      if(res === 'cand') setStatus(ocrCandD === 0 ? 'S/N 글자가 일치합니다. 사진이 두 번째 문서가 맞으면 아래(또는 카메라 위) 확인 버튼을 누르세요.' : 'S/N과 비슷한 글자가 읽혔습니다. 두 번째 문서와 같은지 확인 버튼으로 확인하세요.','wait');
+      else if(res === 'none') setStatus('사진에서 S/N을 찾지 못했습니다. S/N 글자가 크고 선명하게 나오도록 가까이서 다시 찍거나 아래에 직접 입력하세요.','bad');
+    }catch(err){ setStatus('사진 글자 인식을 사용할 수 없습니다: '+(err.message||err)+' 아래 [직접 입력]으로 대조할 수 있습니다.','bad'); }
+    finally{ ocrBusy = false; input.value = ''; }
   }
   function minSuffix(sn){ return Math.max(4, Math.ceil(normSn(sn).length * 0.6)); }
   function manualCheck(v){      // 'full' | 'suffix' | 'short' | 'wrong'
@@ -547,7 +595,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   }
   // 그림자·어두운 곳용: 살짝 흐리게 한 뒤, 주변 밝기(상자 평균)로 나눠 조명을 평평하게 만듦 (좌표 복원용 sx, sy, scale 반환)
   function flatFrame(maxW, maxPx, crop, cv, cx, opts){
-    const vw = video.videoWidth, vh = video.videoHeight; if(!vw || !vh) return null;
+    const S = (opts && opts.src) || video, vw = S.videoWidth || S.width, vh = S.videoHeight || S.height; if(!vw || !vh) return null;
     const c = crop || {x0:0, y0:0, x1:1, y1:1};
     const sx = vw*c.x0, sy = vh*c.y0, sw = vw*(c.x1-c.x0), sh = vh*(c.y1-c.y0);
     const plain = !!(opts && opts.plain), up = (opts && opts.up) || 1;     // up: 작은 영역을 확대해 글자를 크게 (S/N 박스용), plain: 조명 보정 없이 회색조만
@@ -555,7 +603,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     const w = Math.max(16, Math.round(sw*sc)), h = Math.max(16, Math.round(sh*sc));
     cv.width = w; cv.height = h;
     try{ cx.filter = plain ? 'none' : 'blur(1.2px)'; }catch(e){}
-    cx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+    cx.drawImage(S, sx, sy, sw, sh, 0, 0, w, h);
     try{ cx.filter = 'none'; }catch(e){}
     const img = cx.getImageData(0, 0, w, h), d = img.data, n = w*h;
     const gray = new Uint8Array(n); let sum = 0;
@@ -582,12 +630,14 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     g.font = 'bold 14px sans-serif'; g.fillStyle = '#22d3ee'; g.fillText('S/N 글자 한 줄을 이 박스 안에 크게', x + 4, y - 6); g.restore();
   }
   // 화면(미리보기) 속 박스 위치를 카메라 원본 화면의 비율 좌표로 변환 (object-fit: cover 보정)
-  function guideCrop(){
+  const VIEW = {x0:0, x1:1, y0:0, y1:1};      // 미리보기 화면 전체
+  function guideCrop(G){
+    G = G || GUIDE;
     const vw = video.videoWidth, vh = video.videoHeight; if(!vw || !vh) return null;
     const cv = $('ov'); let cw = cv.width, ch = cv.height;
     if(!cw || !ch){ const r = cv.getBoundingClientRect(); cw = Math.round(r.width) || 320; ch = Math.round(r.height) || 240; }
     const sc = Math.max(cw/vw, ch/vh), ox = (cw - vw*sc)/2, oy = (ch - vh*sc)/2, cl = v => Math.max(0, Math.min(1, v));
-    return {x0:cl((GUIDE.x0*cw - ox)/(vw*sc)), x1:cl((GUIDE.x1*cw - ox)/(vw*sc)), y0:cl((GUIDE.y0*ch - oy)/(vh*sc)), y1:cl((GUIDE.y1*ch - oy)/(vh*sc))};
+    return {x0:cl((G.x0*cw - ox)/(vw*sc)), x1:cl((G.x1*cw - ox)/(vw*sc)), y0:cl((G.y0*ch - oy)/(vh*sc)), y1:cl((G.y1*ch - oy)/(vh*sc))};
   }
   function drawOverlay(codes){
     const cv = $('ov'), r = cv.getBoundingClientRect();
@@ -833,8 +883,10 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     try{ return document.execCommand('copy'); }catch(e){ return false; }
   }
   $('ocrBtn').addEventListener('click', ocrCompare);
+  $('ocrPhoto').addEventListener('change', handleOcrPhoto);
+  $('camConfirm').addEventListener('click', confirmCand);
   $('manualSn').addEventListener('input', ()=>{ if(!cur.a || cur.b || cur.result){ $('manualHint').textContent=''; return; } const v = $('manualSn').value.trim(); if(!v){ $('manualHint').textContent=''; return; } const k = manualCheck(v); $('manualHint').textContent = k==='full' ? '전체 일치 ✓' : k==='suffix' ? '끝자리 일치 ✓ ([입력한 S/N으로 대조]를 누르세요)' : k==='short' ? `끝에서부터 ${minSuffix(cur.a.sn)}자리 이상 입력하세요` : '일치하지 않음 ✗'; });
-  $('ocrCandBtn').addEventListener('click', ()=>{ if(cur.a && !cur.b && !cur.result) passBySn('S/N 글자(확인)', `읽힌 글자를 두 번째 문서에서 직접 확인해 일치 처리 · ${cur.a.sn}`); });
+  $('ocrCandBtn').addEventListener('click', confirmCand);
   $('manualBtn').addEventListener('click', manualCompare);
   $('failBtn').addEventListener('click', manualFail);
   $('nextBtn').addEventListener('click',()=>newProduct(false));
