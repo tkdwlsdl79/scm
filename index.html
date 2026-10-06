@@ -44,6 +44,11 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
 <div class="wrap">
   <div class="top"><h1>SCM 제품검증</h1><span class="badge">Android v4 · 연속 스캔</span></div>
 
+  <div id="resetNotice" class="status wait" hidden style="margin-top:12px">
+    <div id="resetNoticeMsg"></div>
+    <button id="resetNoticeBtn" class="btn secondary" type="button">확인</button>
+  </div>
+
   <div id="inapp" class="status bad" hidden style="margin-top:12px">
     <div>지금 <b>카카오톡 등 앱 안의 브라우저</b>로 열려 있어 카메라가 막힙니다. 아래 버튼으로 Chrome에서 다시 열어 주세요.</div>
     <a id="inappBtn" class="btn" style="text-decoration:none;text-align:center;color:#fff">Chrome(외부 브라우저)로 열기</a>
@@ -98,14 +103,15 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
 
     <div id="fallbackPanel" class="step" hidden>
       <div class="stephead"><b>두 번째 QR이 안 읽히나요?</b></div>
-      <p class="muted">첫 번째 QR 후 두 번째가 2초 안에 안 읽히면, 카메라에 비친 <b>라벨의 S/N 글자</b>를 자동으로 읽어 아래 S/N과 대조합니다. 일치하면 자동으로 PASS 처리하고 '[S/N 대조]'로 기록합니다. S/N 글자가 화면 가운데에 크고 선명하게 보이도록 비춰 주세요.</p>
+      <p class="muted">첫 번째 QR 후 두 번째가 2초 안에 안 읽히면, 카메라에 비친 <b>라벨의 S/N 글자</b>를 자동으로 읽어 아래 S/N과 대조합니다. 일치하면 자동으로 PASS 처리하고 '[S/N 대조]'로 기록합니다. 라벨의 <b>S/N 글자 한 줄을 화면의 하늘색 점선 박스 안에 크게</b> 맞추면 가장 잘 읽힙니다. 박스 안은 확대해서 여러 방식으로 읽습니다.</p>
       <div class="muted">찾는 S/N</div><div id="targetSn" class="sn"></div>
       <div id="ocrInfo" class="muted" style="margin-top:6px"></div>
       <div id="ocrLast" class="raw" style="min-height:0"></div>
       <button id="ocrCandBtn" class="btn secondary" type="button" hidden></button>
       <button id="ocrBtn" class="btn secondary" type="button">지금 바로 글자 인식 (자동 인식을 기다리지 않고 실행)</button>
-      <label for="manualSn" style="margin-top:12px">또는 라벨에 적힌 S/N 직접 입력</label>
+      <label for="manualSn" style="margin-top:12px">또는 라벨에 적힌 S/N 직접 입력 (글자가 접혀 안 보이면 보이는 끝자리만 입력해도 됩니다 — S/N 길이의 60% 이상, 예: 10자리면 끝 6자리)</label>
       <input type="text" id="manualSn" placeholder="예: 라벨의 S/N 그대로" autocapitalize="characters" autocomplete="off">
+      <div id="manualHint" class="muted" style="margin-top:4px"></div>
       <button id="manualBtn" class="btn secondary" type="button">입력한 S/N으로 대조</button>
       <button id="failBtn" class="btn secondary" type="button" hidden>불일치로 FAIL 기록</button>
     </div>
@@ -130,6 +136,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     <label>누적 검증 결과</label>
     <div class="kpi"><div><b id="totalCount">0</b><span>총 검증</span></div><div><b id="passCount">0</b><span>PASS</span></div><div><b id="failCount">0</b><span>FAIL</span></div></div>
     <div id="log" class="log"><div class="muted">아직 검증된 제품이 없습니다.</div></div>
+    <label class="chk"><input type="checkbox" id="autoReset" checked>첫 검증 후 12시간이 지나면 자동 초기화 (기록은 '임시저장'에 자동 보관)</label>
+    <div id="resetInfo" class="muted" style="margin-top:6px"></div>
   </div>
 
   <div class="card">
@@ -167,7 +175,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     <div class="row"><button id="linkShareBtn" class="primary" type="button">앱 링크 공유</button></div>
   </div>
 
-  <div class="foot">v4 동작 방식: 카메라 영상을 약 0.13초 간격으로 분석해 QR/DataMatrix를 찾습니다. 같은 코드가 설정한 횟수(빠름 2회·보통 5회·느림 8회)만큼 연속으로 읽혀야 인정(오인식 방지)하며, 화면에 서로 다른 코드가 2개 이상 보이면 인식하지 않습니다. 어두운 곳·그림자에서는 조명을 평평하게 보정한 화면(3가지 방식)을 번갈아 재시도하고(플래시 권장), 1~3프레임 놓쳐도 인식 진행이 끊기지 않습니다. 화면 왼쪽 위 '0 | 2'는 읽은 QR 개수이며 인식 중인 코드는 노란 테두리, 완료는 초록 테두리로 표시됩니다. 두 번째 QR이 2초 안에 안 읽히면 카메라에 비친 S/N 글자를 자동으로 읽어(글자 인식, 인터넷 필요) 첫 번째 QR의 S/N과 대조하고(숫자와 모양이 비슷한 글자 — 0↔O·Q·D, 1↔I·L, 5↔S, 8↔B, 2↔Z, 6↔G — 는 같은 글자로 보고 그 외에는 정확히 일치해야 PASS, 한두 글자만 다르게 읽히면 확인 버튼으로 직접 확인), 직접 입력으로도 대조할 수 있으며 이 경우 '[S/N 대조]'로 기록됩니다(제품코드는 확인되지 않음). 카메라 화면이 절반 이상 스크롤로 가려지면 스캔이 자동으로 멈추고, 스크롤하는 동안에도 잠깐 인식을 쉽니다. 제품코드·S/N 추출 규칙과 중복(이미 PASS된 S/N) 차단은 v3와 같습니다. 방금 끝난 제품의 QR은 화면에서 벗어날 때까지 무시하므로 다음 제품으로 자연스럽게 넘어갑니다. PASS는 짧은 '삑' 1회, FAIL/중복은 길게 2회 소리와 진동이 나며 FAIL·중복은 자동으로 넘어가지 않고 멈춥니다. 검증 결과는 이 브라우저에 자동 저장되며 '전체 초기화'로만 지워지고(임시저장 목록은 유지), 첫 번째 QR만 읽은 상태도 복원됩니다. 이름을 붙인 임시저장과 백업 파일 저장/불러오기도 지원합니다. 스캔·입력이 있을 때마다 즉시 저장하고, 추가로 30초마다·화면을 벗어날 때 자동 백업을 따로 남깁니다. 어두우면(약 2초 연속) 플래시를 자동으로 켜고, 웹에서는 플래시 밝기를 조절할 수 없어 빛이 너무 강해 화면이 하얗게 날아가면 카메라 노출을 단계적으로 낮추고 그래도 심하면 플래시를 끄고 15초간 다시 켜지 않습니다. 플래시 버튼을 직접 누르면 60초간 자동 제어를 쉽니다. 실시간 카메라는 HTTPS 주소(또는 localhost)에서만 동작할 수 있습니다.</div>
+  <div class="foot">v4 동작 방식: 카메라 영상을 약 0.13초 간격으로 분석해 QR/DataMatrix를 찾습니다. 같은 코드가 설정한 횟수(빠름 2회·보통 5회·느림 8회)만큼 연속으로 읽혀야 인정(오인식 방지)하며, 화면에 서로 다른 코드가 2개 이상 보이면 인식하지 않습니다. 어두운 곳·그림자에서는 조명을 평평하게 보정한 화면(3가지 방식)을 번갈아 재시도하고(플래시 권장), 1~3프레임 놓쳐도 인식 진행이 끊기지 않습니다. 화면 왼쪽 위 '0 | 2'는 읽은 QR 개수이며 인식 중인 코드는 노란 테두리, 완료는 초록 테두리로 표시됩니다. 두 번째 QR이 2초 안에 안 읽히면 카메라에 비친 S/N 글자를 자동으로 읽어(글자 인식, 인터넷 필요) 첫 번째 QR의 S/N과 대조하고(숫자와 모양이 비슷한 글자 — 0↔O·Q·D, 1↔I·L, 5↔S, 8↔B, 2↔Z, 6↔G — 는 같은 글자로 보고 그 외에는 정확히 일치해야 PASS, 한두 글자만 다르게 읽히면 확인 버튼으로 직접 확인), 직접 입력(보이는 끝자리 60% 이상만 입력해도 됨, '[끝자리 입력]'으로 기록)으로도 대조할 수 있으며 이 경우 '[S/N 대조]'로 기록됩니다(제품코드는 확인되지 않음). 카메라 화면이 절반 이상 스크롤로 가려지면 스캔이 자동으로 멈추고, 스크롤하는 동안에도 잠깐 인식을 쉽니다. 제품코드·S/N 추출 규칙과 중복(이미 PASS된 S/N) 차단은 v3와 같습니다. 방금 끝난 제품의 QR은 화면에서 벗어날 때까지 무시하므로 다음 제품으로 자연스럽게 넘어갑니다. PASS는 짧은 '삑' 1회, FAIL/중복은 길게 2회 소리와 진동이 나며 FAIL·중복은 자동으로 넘어가지 않고 멈춥니다. 검증 결과는 이 브라우저에 자동 저장되며 '전체 초기화'로만 지워지고(임시저장 목록은 유지), 첫 번째 QR만 읽은 상태도 복원됩니다. 이름을 붙인 임시저장과 백업 파일 저장/불러오기도 지원합니다. 스캔·입력이 있을 때마다 즉시 저장하고, 추가로 30초마다·화면을 벗어날 때 자동 백업을 따로 남깁니다. 어두우면(약 2초 연속) 플래시를 자동으로 켜고, 웹에서는 플래시 밝기를 조절할 수 없어 빛이 너무 강해 화면이 하얗게 날아가면 카메라 노출을 단계적으로 낮추고 그래도 심하면 플래시를 끄고 15초간 다시 켜지 않습니다. 플래시 버튼을 직접 누르면 60초간 자동 제어를 쉽니다. 중복(이미 PASS된 S/N)이 뜨면 다음 제품 QR을 비추는 즉시 이어서 진행됩니다. 첫 검증 후 12시간이 지나면 기록을 임시저장에 '자동 보관'하고 초기화합니다(스캔 중인 제품이 있으면 끝난 뒤). 실시간 카메라는 HTTPS 주소(또는 localhost)에서만 동작할 수 있습니다.</div>
 </div>
 
 <script>
@@ -181,7 +189,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   let ignore = new Map();              // raw -> 마지막으로 화면에서 본 시각
   let stable = {raw:'', n:0};
   let viewHidden=false, lastScroll=0, ocrBusy=false, dark=false, emptyTicks=0, lastN=0, ocrWorker=null;
-  let ocrRunning=false, ocrReady=false, ocrFail=false, ocrLoading=false, aSince=0, ocrRuns=0, ocrCand=null, fbShown=false;
+  let ocrRunning=false, ocrReady=false, ocrFail=false, ocrLoading=false, aSince=0, ocrRuns=0, ocrCand=null, ocrCandD=99, ocrCandAt=0, fbShown=false;
+  const GUIDE = {x0:.05, x1:.95, y0:.40, y1:.60};     // 화면(미리보기) 기준 S/N 읽기 박스 위치
   let torchCapable=false, ecCaps=null, baseEc=0, curEc=0, torchSince=0, darkCount=0, glareCount=0, flashLockUntil=0, autoLockUntil=0, flashBusy=false, flashNoteText='', flashNoteUntil=0;
   const lsCv = document.createElement('canvas'); lsCv.width = 64; lsCv.height = 48; const lsCtx = lsCv.getContext('2d', {willReadFrequently:true});
   const ocrCv = document.createElement('canvas'); const ocrCtx = ocrCv.getContext('2d', {willReadFrequently:true});
@@ -243,7 +252,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     if(n !== lastN){ lastN = n; if(n>0){ void c.offsetWidth; c.classList.add('pop'); } }
     const showFb = !!cur.a && !cur.b && !cur.result;
     $('fallbackPanel').hidden = !showFb;
-    if(showFb && !fbShown){ aSince = Date.now(); ocrRuns = 0; ocrCand = null; $('ocrCandBtn').hidden = true; $('ocrLast').textContent = ''; }
+    if(showFb && !fbShown){ aSince = Date.now(); ocrRuns = 0; ocrCand = null; ocrCandD = 99; $('ocrCandBtn').hidden = true; $('manualHint').textContent = ''; $('ocrLast').textContent = ''; }
     fbShown = showFb;
     $('targetSn').textContent = showFb && cur.a ? cur.a.sn : '';
     if(!showFb) $('failBtn').hidden = true;
@@ -262,6 +271,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   function idleText(){ return cur.a ? '첫 번째 QR 완료. 이어서 두 번째 QR을 비추세요.' : `${records.length+ (cur.recNo?0:1)}번째 제품: 성적서/반입라벨 QR을 차례로 비추세요.`; }
 
   function renderSummary(){
+    try{ updateResetInfo(); }catch(e){}
     const pass=records.filter(r=>r.result==='PASS').length, fail=records.length-pass;
     $('totalCount').textContent=records.length; $('passCount').textContent=pass; $('failCount').textContent=fail;
     $('log').innerHTML = records.length ? records.slice().reverse().map(r=>{
@@ -290,7 +300,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
 
   // 코드 하나를 받아들임 (실시간/사진 공용)
   function accept(raw, format){
-    if(cur.result) return;                 // FAIL/중복으로 멈춘 상태: 버튼을 눌러야 진행
+    if(cur.result === 'DUP') newProduct(false);   // 중복: 확인만 하고, 새 QR(다음 제품)을 비추면 바로 이어서 진행
+    else if(cur.result) return;                   // FAIL로 멈춘 상태: 버튼을 눌러야 진행
     const slot = cur.a ? 'b' : 'a';
     const hint = slot==='b' ? cur.a.itemNo : '';
     const k = extractKeys(raw, hint);
@@ -321,8 +332,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
       if(dup){
         cur.result='DUP'; updateUI();
         showHero('bad','중복', `이미 #${dup.no}에서 PASS된 제품입니다 · ${d.itemNo} · ${d.sn}`);
-        setStatus('이미 검증된 S/N입니다. 중복으로 집계하지 않았습니다. [다음 제품]을 눌러 진행하세요.','bad');
-        flash('bad','중복'); buzz([150,80,150]); beep(300,.25); beep(300,.25,.35); camMsg('중복 — 확인 후 [다음 제품]');
+        setStatus('이미 검증된 S/N입니다. 중복으로 집계하지 않았습니다. 다음 제품의 QR을 비추면 바로 이어집니다.','bad');
+        flash('bad','중복'); buzz([150,80,150]); beep(300,.25); beep(300,.25,.35); camMsg('중복 — 다음 제품 QR을 비추세요');
         $('nextBtn').disabled=false; save(); return;
       }
     }
@@ -385,19 +396,40 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     try{ await ocrWorker.setParameters({tessedit_char_whitelist:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/:. ', tessedit_pageseg_mode:'11'}); }catch(e){}
     return ocrWorker;
   }
+  // 같은 화면을 여러 읽기 방식(PSM)으로 읽어 보고, 일치하면 즉시 종료. 반환: 'pass' | 'done'(그 사이 QR로 끝남) | 'cand' | 'none'
+  async function ocrPass(f, psms){
+    const w = await getOcr();
+    for(const psm of psms){
+      try{ await w.setParameters({tessedit_pageseg_mode:String(psm)}); }catch(e){}
+      const r = await w.recognize(f.canvas);
+      if(!cur.a || cur.b || cur.result) return 'done';
+      const res = handleOcrText((r && r.data && r.data.text) || '');
+      if(res === 'pass') return 'pass';
+    }
+    return ocrCand ? 'cand' : 'none';
+  }
+  function ocrFrame(kind){
+    const crop = guideCrop();
+    if(kind === 'band')      return {f:flatFrame(2400, 2600000, crop, ocrCv, ocrCtx, {up:3}), psms:[6,7,11]};                // S/N 박스를 3배 확대 + 조명 보정
+    if(kind === 'bandplain') return {f:flatFrame(2400, 2600000, crop, ocrCv, ocrCtx, {up:3, plain:true}), psms:[6,7,11]};    // S/N 박스를 3배 확대(원본 밝기)
+    return {f:flatFrame(1600, 1600000, null, ocrCv, ocrCtx), psms:[11]};                                                     // 화면 전체
+  }
   async function ocrCompare(){
     if(!cur.a || cur.b || cur.result) return;
-    if(!stream){ setStatus('카메라를 켠 상태에서 라벨의 S/N 글자를 비추고 눌러 주세요.','bad'); return; }
+    if(!stream){ setStatus('카메라를 켠 상태에서 라벨의 S/N 글자를 박스 안에 비추고 눌러 주세요.','bad'); return; }
     if(ocrRunning){ setStatus('자동 글자 인식이 진행 중입니다. 잠시 후 다시 눌러 주세요.','wait'); return; }
     ocrFail = false; ocrBusy = true; $('ocrBtn').disabled = true;
     setStatus('S/N 글자를 인식하는 중입니다… (처음 한 번은 인식 데이터를 내려받느라 오래 걸릴 수 있습니다. 폰을 고정해 주세요)','wait'); camMsg('글자 인식 중…');
     try{
-      const w = await getOcr(); ocrReady = true; setOcrInfo('글자 인식 준비 완료');
-      const f = flatFrame(1600, 1600000, null, ocrCv, ocrCtx); if(!f) throw new Error('카메라 화면을 가져오지 못했습니다.');
-      const r = await w.recognize(f.canvas);
-      const res = handleOcrText((r && r.data && r.data.text) || '');
+      await getOcr(); ocrReady = true; setOcrInfo('글자 인식 준비 완료');
+      let res = 'none';
+      for(const kind of ['band','bandplain','full']){
+        const o = ocrFrame(kind); if(!o.f) throw new Error('카메라 화면을 가져오지 못했습니다.');
+        res = await ocrPass(o.f, o.psms);
+        if(res === 'pass' || res === 'done') break;
+      }
       if(res === 'cand') setStatus('S/N과 비슷한 글자가 읽혔습니다. 아래 확인 버튼으로 라벨과 같은지 확인하세요.','wait');
-      else if(res === 'none'){ setStatus('글자에서 S/N을 찾지 못했습니다. S/N 글자가 화면 가운데에 크고 선명하게 보이도록 비추고 다시 시도하거나, 아래에 직접 입력하세요.','bad'); camMsg('S/N을 찾지 못함'); buzz(200); beep(220,.3); }
+      else if(res === 'none'){ setStatus('글자에서 S/N을 찾지 못했습니다. S/N 글자 한 줄이 하늘색 박스 안에 크고 선명하게 들어오도록 비추고 다시 시도하거나, 아래에 직접 입력하세요.','bad'); camMsg('S/N을 찾지 못함'); buzz(200); beep(220,.3); }
     }catch(e){
       setStatus('글자 인식을 사용할 수 없습니다: '+(e.message||e)+' 아래 [직접 입력]으로 대조할 수 있습니다.','bad');
     }finally{ ocrBusy = false; $('ocrBtn').disabled = false; }
@@ -428,19 +460,18 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     const cands = [];
     for(let i=0;i<base.length;i++){ cands.push(base[i]); if(i+1<base.length) cands.push(base[i]+base[i+1]); }
     let best = null;
-    for(const c of cands){ if(Math.abs(c.length - tg.length) > 2) continue; const d = lev(c, tg); if(!best || d < best.d) best = {c, d}; }
+    for(const c of cands){ if(Math.abs(c.length - tg.length) > 3) continue; const d = lev(c, tg); if(!best || d < best.d) best = {c, d}; }
     $('ocrLast').textContent = '마지막으로 읽은 글자: ' + (String(text||'').replace(/\s+/g,' ').trim().slice(0,100) || '(읽힌 글자 없음)');
     if(best && best.d === 0){
       const itemNorm = normSn(cur.a.itemNo), itemFound = !!itemNorm && base.some(t => eqStr(t, itemNorm));
       passBySn('S/N 글자 자동', itemFound ? `S/N·제품코드 글자 모두 일치 · ${cur.a.itemNo} · ${cur.a.sn}` : `S/N 글자 일치 · ${cur.a.sn} (제품코드는 글자로 확인되지 않음)`);
       return 'pass';
     }
-    if(best && best.d <= 2 && tg.length >= 8){
-      ocrCand = best.c; $('ocrCandBtn').hidden = false;
+    if(best && best.d <= Math.max(2, Math.floor(tg.length*0.3)) && tg.length >= 8 && (!ocrCand || best.d < ocrCandD)){
+      ocrCand = best.c; ocrCandD = best.d; ocrCandAt = Date.now(); $('ocrCandBtn').hidden = false;
       $('ocrCandBtn').textContent = `비슷하게 읽힘: ${best.c} — 라벨의 S/N이 ${cur.a.sn}와 같으면 눌러서 확인`;
-      return 'cand';
     }
-    $('ocrCandBtn').hidden = true; ocrCand = null; return 'none';
+    return ocrCand ? 'cand' : 'none';
   }
   function preloadOcr(){
     if(ocrReady || ocrFail || ocrLoading) return;
@@ -454,25 +485,32 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     if(!cur.a || cur.b || cur.result || stable.raw) return;          // 두 번째 QR이 인식 진행 중이면 QR 우선
     if(Date.now() - aSince < 2000) return;                             // 첫 QR 후 2초 동안 두 번째 QR을 기다림
     if(!ocrReady){ preloadOcr(); return; }
+    if(ocrCand && Date.now() - ocrCandAt > 10000){ ocrCand = null; ocrCandD = 99; $('ocrCandBtn').hidden = true; }   // 오래된 후보는 지움
     ocrRunning = true; ocrRuns++;
     try{
       camMsg(`S/N 글자 자동 확인 중… (${ocrRuns}회)`);
-      const mode = (ocrRuns-1) % 3;                                   // 조명 보정(전체) → 조명 보정(가운데 확대) → 밝기·대비 보정 순환
-      const f = mode===0 ? flatFrame(1600, 1600000, null, ocrCv, ocrCtx)
-              : mode===1 ? flatFrame(1600, 1600000, {x0:.08, y0:.15, x1:.92, y1:.85}, ocrCv, ocrCtx)
-              :            enhancedFrame(1600, false, ocrCv, ocrCtx);
-      if(!f) return;
-      const w = await getOcr(); const r = await w.recognize(f.canvas);
-      if(!cur.a || cur.b || cur.result) return;                        // 그 사이 QR로 끝났으면 무시
-      const res = handleOcrText((r && r.data && r.data.text) || '');
+      const kind = ['band','bandplain','full'][(ocrRuns-1) % 3];       // 박스(조명 보정) → 박스(원본) → 화면 전체 순환
+      const o = ocrFrame(kind); if(!o.f) return;
+      const res = await ocrPass(o.f, o.psms);
       if(res === 'cand') camMsg('S/N과 비슷한 글자 — 아래 확인 버튼을 보세요');
     }catch(e){} finally{ ocrRunning = false; }
+  }
+  function minSuffix(sn){ return Math.max(4, Math.ceil(normSn(sn).length * 0.6)); }
+  function manualCheck(v){      // 'full' | 'suffix' | 'short' | 'wrong'
+    const tg = normSn(cur.a.sn), x = normSn(v);
+    if(!x) return 'short';
+    if(x === tg) return 'full';
+    if(x.length < tg.length && x.length >= minSuffix(cur.a.sn) && tg.endsWith(x)) return 'suffix';
+    return x.length < minSuffix(cur.a.sn) && tg.endsWith(x) ? 'short' : 'wrong';
   }
   function manualCompare(){
     if(!cur.a || cur.b || cur.result) return;
     const v = $('manualSn').value.trim();
     if(!v){ setStatus('라벨에 적힌 S/N을 입력하세요.','bad'); return; }
-    if(normSn(v) === normSn(cur.a.sn)){ $('manualSn').value=''; passBySn('직접 입력', `직접 입력한 S/N 일치 · ${cur.a.sn}`); }
+    const k = manualCheck(v);
+    if(k === 'full'){ $('manualSn').value=''; passBySn('직접 입력', `직접 입력한 S/N 일치 · ${cur.a.sn}`); }
+    else if(k === 'suffix'){ const n = normSn(v).length; $('manualSn').value=''; passBySn('끝자리 입력', `직접 입력한 S/N 끝 ${n}자리 일치 · ${cur.a.sn}`); }
+    else if(k === 'short'){ setStatus(`끝에서부터 ${minSuffix(cur.a.sn)}자리 이상 입력해 주세요. (찾는 S/N: ${cur.a.sn})`,'bad'); }
     else {
       setStatus(`입력한 S/N(${v})이 첫 번째 QR의 S/N(${cur.a.sn})과 다릅니다. 다시 입력하거나, 실제로 다른 제품이면 [불일치로 FAIL 기록]을 누르세요.`,'bad');
       $('failBtn').hidden = false; buzz([300,100,300]); beep(300,.3);
@@ -507,19 +545,21 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     return {canvas:cv, avg, scale:sc, sx:0, sy:sy};
   }
   // 그림자·어두운 곳용: 살짝 흐리게 한 뒤, 주변 밝기(상자 평균)로 나눠 조명을 평평하게 만듦 (좌표 복원용 sx, sy, scale 반환)
-  function flatFrame(maxW, maxPx, crop, cv, cx){
+  function flatFrame(maxW, maxPx, crop, cv, cx, opts){
     const vw = video.videoWidth, vh = video.videoHeight; if(!vw || !vh) return null;
     const c = crop || {x0:0, y0:0, x1:1, y1:1};
     const sx = vw*c.x0, sy = vh*c.y0, sw = vw*(c.x1-c.x0), sh = vh*(c.y1-c.y0);
-    const sc = Math.min(1, maxW/sw, Math.sqrt(maxPx/(sw*sh)));
+    const plain = !!(opts && opts.plain), up = (opts && opts.up) || 1;     // up: 작은 영역을 확대해 글자를 크게 (S/N 박스용), plain: 조명 보정 없이 회색조만
+    const sc = Math.min(up, maxW/sw, Math.sqrt(maxPx/(sw*sh)));
     const w = Math.max(16, Math.round(sw*sc)), h = Math.max(16, Math.round(sh*sc));
     cv.width = w; cv.height = h;
-    try{ cx.filter = 'blur(1.2px)'; }catch(e){}
+    try{ cx.filter = plain ? 'none' : 'blur(1.2px)'; }catch(e){}
     cx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
     try{ cx.filter = 'none'; }catch(e){}
     const img = cx.getImageData(0, 0, w, h), d = img.data, n = w*h;
     const gray = new Uint8Array(n); let sum = 0;
     for(let i=0;i<n;i++){ const j=i*4, y=(d[j]*77 + d[j+1]*150 + d[j+2]*29) >> 8; gray[i]=y; sum+=y; }
+    if(plain){ for(let i=0;i<n;i++){ const j=i*4, v=gray[i]; d[j]=d[j+1]=d[j+2]=v; d[j+3]=255; } cx.putImageData(img, 0, 0); return {canvas:cv, avg:sum/n, scale:sc, sx, sy}; }
     const W = w+1, ii = new Uint32Array(W*(h+1));
     for(let y=0;y<h;y++){ let row=0; const o=(y+1)*W, q=y*W; for(let x=0;x<w;x++){ row += gray[y*w+x]; ii[o+x+1] = ii[q+x+1] + row; } }
     const r = Math.max(8, Math.round(Math.max(w,h)/12));
@@ -535,11 +575,25 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     cx.putImageData(img, 0, 0);
     return {canvas:cv, avg:sum/n, scale:sc, sx, sy};
   }
+  function drawGuide(g, w, h){
+    const x = GUIDE.x0*w, y = GUIDE.y0*h, bw = (GUIDE.x1-GUIDE.x0)*w, bh = (GUIDE.y1-GUIDE.y0)*h;
+    g.save(); g.lineWidth = 3; g.strokeStyle = '#22d3ee'; g.setLineDash([10,6]); g.strokeRect(x, y, bw, bh); g.setLineDash([]);
+    g.font = 'bold 14px sans-serif'; g.fillStyle = '#22d3ee'; g.fillText('S/N 글자 한 줄을 이 박스 안에 크게', x + 4, y - 6); g.restore();
+  }
+  // 화면(미리보기) 속 박스 위치를 카메라 원본 화면의 비율 좌표로 변환 (object-fit: cover 보정)
+  function guideCrop(){
+    const vw = video.videoWidth, vh = video.videoHeight; if(!vw || !vh) return null;
+    const cv = $('ov'); let cw = cv.width, ch = cv.height;
+    if(!cw || !ch){ const r = cv.getBoundingClientRect(); cw = Math.round(r.width) || 320; ch = Math.round(r.height) || 240; }
+    const sc = Math.max(cw/vw, ch/vh), ox = (cw - vw*sc)/2, oy = (ch - vh*sc)/2, cl = v => Math.max(0, Math.min(1, v));
+    return {x0:cl((GUIDE.x0*cw - ox)/(vw*sc)), x1:cl((GUIDE.x1*cw - ox)/(vw*sc)), y0:cl((GUIDE.y0*ch - oy)/(vh*sc)), y1:cl((GUIDE.y1*ch - oy)/(vh*sc))};
+  }
   function drawOverlay(codes){
     const cv = $('ov'), r = cv.getBoundingClientRect();
     const cw = Math.round(r.width), ch = Math.round(r.height);
     if(cv.width !== cw || cv.height !== ch){ cv.width = cw; cv.height = ch; }
     const g = cv.getContext('2d'); g.clearRect(0, 0, cv.width, cv.height);
+    if(cur.a && !cur.b && !cur.result) drawGuide(g, cv.width, cv.height);      // 두 번째 QR을 기다리는 동안 S/N 읽기 박스 표시
     const vw = video.videoWidth, vh = video.videoHeight; if(!vw || !vh || !codes.length) return;
     const sc = Math.max(cv.width/vw, cv.height/vh), ox = (cv.width - vw*sc)/2, oy = (cv.height - vh*sc)/2;
     for(const c of codes){
@@ -777,6 +831,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     try{ return document.execCommand('copy'); }catch(e){ return false; }
   }
   $('ocrBtn').addEventListener('click', ocrCompare);
+  $('manualSn').addEventListener('input', ()=>{ if(!cur.a || cur.b || cur.result){ $('manualHint').textContent=''; return; } const v = $('manualSn').value.trim(); if(!v){ $('manualHint').textContent=''; return; } const k = manualCheck(v); $('manualHint').textContent = k==='full' ? '전체 일치 ✓' : k==='suffix' ? '끝자리 일치 ✓ ([입력한 S/N으로 대조]를 누르세요)' : k==='short' ? `끝에서부터 ${minSuffix(cur.a.sn)}자리 이상 입력하세요` : '일치하지 않음 ✗'; });
   $('ocrCandBtn').addEventListener('click', ()=>{ if(cur.a && !cur.b && !cur.result) passBySn('S/N 글자(확인)', `비슷하게 읽힌 글자를 직접 확인해 일치 처리 · ${cur.a.sn}`); });
   $('manualBtn').addEventListener('click', manualCompare);
   $('failBtn').addEventListener('click', manualFail);
@@ -797,6 +852,37 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     alert(ok ? '링크를 복사했습니다. 카카오톡에 붙여넣어 보내세요.' : url);
   });
   $('selectBtn').addEventListener('click',async()=>{ renderSummary(); const ok=await copyText($('message').value); if(ok) setStatus('메시지를 복사했습니다.','ok'); });
+  // ===== 12시간 자동 초기화 =====
+  const RESET_MS = 12*3600*1000, RESET_KEY = 'scm_autoreset_v4';
+  function batchStart(){ return records.length ? Math.min(...records.map(r => new Date(r.ts).getTime()).filter(t => !isNaN(t))) : 0; }
+  function updateResetInfo(){
+    if(!$('autoReset').checked){ $('resetInfo').textContent = '자동 초기화 꺼짐 — 직접 [전체 초기화]를 눌러야 합니다.'; return; }
+    const t0 = batchStart();
+    if(!records.length || !t0){ $('resetInfo').textContent = '첫 검증 후 12시간이 지나면 기록을 임시저장에 보관하고 자동으로 초기화합니다.'; return; }
+    const left = RESET_MS - (Date.now() - t0), h = Math.max(0, Math.floor(left/3600000)), m = Math.max(0, Math.floor((left%3600000)/60000));
+    $('resetInfo').textContent = `첫 검증 ${fmt(t0)} · 자동 초기화까지 약 ${h}시간 ${m}분 남음`;
+  }
+  function checkAutoReset(force){
+    if(!$('autoReset').checked){ updateResetInfo(); return; }
+    const t0 = batchStart();
+    if(records.length && t0 && Date.now() - t0 >= RESET_MS && (force || !cur.a || cur.result)){   // 스캔 중인 제품이 있으면 끝날 때까지 미룸
+      const n = records.length, pass = records.filter(r=>r.result==='PASS').length;
+      const snap = {id:String(Date.now()), name:`자동 보관 ${fmt(new Date()).slice(5)} (12시간 경과)`, ts:new Date().toISOString(), author:$('author').value, line:$('line').value, records:JSON.parse(JSON.stringify(records)), auto:true};
+      saved.push(snap);
+      const autos = saved.filter(x => x.auto); if(autos.length > 20) saved = saved.filter(x => !x.auto || autos.indexOf(x) >= autos.length - 20);   // 자동 보관은 최근 20개만
+      persistSaved();
+      records = []; ignore = new Map(); newProduct(false); renderSummary(); renderSaved(); save();
+      $('resetNoticeMsg').textContent = `12시간이 지나 이전 검증 기록 ${n}건(PASS ${pass}, FAIL ${n-pass})을 '임시저장'에 "${snap.name}"으로 보관하고 초기화했습니다. 필요하면 [불러오기]로 되돌릴 수 있습니다.`;
+      $('resetNotice').hidden = false;
+    }
+    updateResetInfo();
+  }
+  try{ const v = localStorage.getItem(RESET_KEY); if(v === '0') $('autoReset').checked = false; }catch(e){}
+  $('autoReset').addEventListener('change', ()=>{ try{ localStorage.setItem(RESET_KEY, $('autoReset').checked ? '1' : '0'); }catch(e){} checkAutoReset(false); });
+  $('resetNoticeBtn').addEventListener('click', ()=>{ $('resetNotice').hidden = true; });
+  setInterval(()=>checkAutoReset(false), 60000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkAutoReset(false); });
+
   $('resetBtn').addEventListener('click',()=>{ if(!confirm('누적 검증 결과를 모두 초기화할까요?')) return; records=[]; ignore=new Map(); newProduct(false); renderSummary(); save(); });
 
   try{ const v = localStorage.getItem(SENS_KEY); if(v && SENS[v]) $('sens').value = v; }catch(e){}
@@ -903,7 +989,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{}); }catch(e){}
 
   setupInApp();
-  load(); loadSaved(); renderSummary(); renderSaved(); renderAuto(); setStatus('카메라를 시작하세요.','wait');
+  load(); loadSaved(); renderSummary(); renderSaved(); renderAuto(); checkAutoReset(true); setStatus('카메라를 시작하세요.','wait');
   if(cur.a){ paint('a', cur.a); setStatus('이전에 읽은 첫 번째 QR을 복원했습니다. 카메라를 시작하고 두 번째 QR을 스캔하세요.','wait'); }
   if(!('BarcodeDetector' in window)) setStatus('현재 브라우저는 코드 인식 기능을 지원하지 않습니다. Android Chrome 최신 버전에서 열어 주세요.','bad');
 })();
