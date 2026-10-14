@@ -43,7 +43,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><h1>SCM 제품검증</h1><span class="badge">품질용 · 라벨 바코드 구분</span></div>
+  <div class="top"><h1>SCM 제품검증</h1><span class="badge">품질용 · 문서 종류 자동 구분</span></div>
 
   <div id="resetNotice" class="status wait" hidden style="margin-top:12px">
     <div id="resetNoticeMsg"></div>
@@ -81,7 +81,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     <input id="zoom" type="range" hidden>
     <label class="chk"><input type="checkbox" id="auto" checked>PASS면 자동으로 다음 제품으로 넘기기</label>
     <label class="chk"><input type="checkbox" id="enh" checked>어두운 곳·그림자 인식 강화 (조명 자동 보정)</label>
-    <label class="chk"><input type="checkbox" id="barRule" checked>같은 값 QR 구분: 바코드가 함께 보이는 QR을 내부 라벨로 인식 (성적서 → 라벨 순서 · 같은 QR 두 번 찍어도 PASS 방지) — 라벨에 바코드가 없으면 끄세요</label>
+    <label class="chk"><input type="checkbox" id="lgRule" checked>같은 값 QR 구분: QR 주변 배치로 성적서/라벨을 자동 판별해 서로 다른 문서일 때만 짝으로 인정 (끄면 문서를 0.5초 이상 가렸다 다시 비추는 방식)</label>
     <label class="chk"><input type="checkbox" id="autoOcr" checked>두 번째 QR이 안 읽히면 S/N 글자를 자동 인식 (일치하면 확인 버튼 표시)</label>
     <label class="chk"><input type="checkbox" id="autoFlash" checked>어두우면 플래시 자동 켜기 (빛 반사가 심하면 노출을 낮추고 그래도 심하면 자동으로 끔)</label>
     <label for="sens" style="margin-top:12px">인식 확정 시간 (짧을수록 빨리 인식, 길수록 오인식 감소)</label>
@@ -195,12 +195,69 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   let cur = {a:null, b:null, result:null, recNo:null};
   let ignore = new Map();              // raw -> 마지막으로 화면에서 본 시각
   let stable = {raw:'', n:0};
-  const SAME_GONE_MS = 500, BAR_MS = 1500;   // [품질용] 첫 QR이 사라진 것으로 인정하는 시간 / 바코드를 '방금 봤다'고 보는 시간
-  let barAt = 0, barLast = '';                // 마지막으로 라벨 바코드(code_128)가 보인 시각·값
-  let sv = {raw:'', seen:0, gone:false, miss:0, lum:-1, t0:0, aBar:false};   // 첫 QR 추적
+  const SAME_GONE_MS = 500, BAR_MS = 1500;   // [품질용] (판별 끄기 모드) 첫 QR이 사라진 것으로 인정하는 시간 / 바코드를 '방금 봤다'고 보는 시간
+  let barAt = 0, barLast = '';
+  let sv = {raw:'', seen:0, gone:false, miss:0, lum:-1, t0:0};
+  const SV0 = () => ({raw:'', seen:0, gone:false, miss:0, lum:-1, t0:0});
   let lumCv=null, lumCtx=null;
   function lum(){ try{ if(!video.videoWidth) return -1; if(!lumCv){ lumCv=document.createElement('canvas'); lumCv.width=16; lumCv.height=12; lumCtx=lumCv.getContext('2d',{willReadFrequently:true}); } lumCtx.drawImage(video,0,0,16,12); const d=lumCtx.getImageData(0,0,16,12).data; let t=0; for(let i=0;i<d.length;i+=4) t+=d[i]*.299+d[i+1]*.587+d[i+2]*.114; return t/(d.length/4); }catch(e){ return -1; } }
-  const SV0 = () => ({raw:'', seen:0, gone:false, miss:0, lum:-1, t0:0, aBar:false});
+  // ===== [품질용] 문서 종류 판별: QR의 왼쪽·아래 영역 배치(성적서=표/제목, 라벨=글줄)로 '성적서'와 '라벨'을 구분 =====
+  const LG = {X0:-3.0, CW:3.9, Y0:0.0, CH:3.2, GW:26, GH:21, S:3};
+  const LGP = {"l":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.533,0.468,0.576,0.477,0.826,1.221,0.239,0.324,2.341,1.845,0.267,0.248,0.226,0.22,0.232,0.237,0.234,0.222,8.972,7.55,2.305,0.232,0.502,0.227,0.0,0.0,0.581,0.434,0.487,0.709,0.689,1.379,0.291,0.432,2.244,1.876,0.255,0.233,0.219,0.236,0.247,0.238,0.238,0.201,8.628,6.938,1.973,1.159,1.428,1.097,0.0,0.0,0.211,0.243,0.468,0.494,0.368,0.729,0.547,0.317,0.873,0.791,0.251,0.223,0.217,0.253,0.253,0.237,0.246,0.191,6.928,6.868,0.297,1.421,1.668,1.416,0.0,0.0,0.559,0.232,0.631,0.886,1.378,1.043,2.528,0.791,0.262,0.25,0.257,0.235,0.226,0.266,0.259,0.23,0.244,0.192,6.486,7.349,0.505,0.297,0.562,0.457,0.0,0.0,0.894,0.276,0.914,1.442,2.624,1.698,4.403,1.187,0.272,0.247,0.247,0.246,0.248,0.274,0.257,0.226,0.241,0.217,6.938,6.814,0.942,1.479,0.486,2.1,0.0,0.0,0.558,0.188,0.513,0.826,1.161,0.961,2.574,0.888,0.266,0.243,0.237,0.249,0.267,0.274,0.257,0.242,0.238,0.196,4.581,4.069,0.922,1.641,0.885,1.461,0.0,0.0,0.314,0.16,0.183,0.367,0.256,0.541,0.411,0.306,0.225,0.587,0.661,0.223,0.264,0.281,0.371,0.676,0.181,0.288,0.601,0.706,0.364,0.788,1.006,0.529,0.0,0.0,0.428,0.278,0.158,0.498,0.271,1.028,0.235,0.894,0.242,1.133,1.113,0.5,0.711,0.422,0.569,0.983,0.2,0.488,1.285,0.777,0.418,0.385,0.642,0.781,0.0,0.0,0.347,0.204,0.128,0.296,0.195,0.952,0.328,0.589,0.221,0.98,0.715,0.381,0.339,0.524,0.534,0.438,0.213,0.172,0.853,0.619,0.385,0.445,0.734,0.855,0.0,0.0,0.251,0.212,0.289,0.194,0.146,0.869,0.383,0.374,0.753,1.038,0.305,0.189,0.222,0.373,0.351,0.208,0.272,0.317,0.308,0.347,0.406,0.511,0.599,0.682,0.0,0.0,0.279,0.158,0.794,0.344,0.168,1.47,0.292,1.121,1.868,2.262,0.299,0.269,0.261,0.266,0.276,0.253,0.237,0.25,0.265,0.296,0.505,0.59,0.523,0.557,0.0,0.0,0.317,0.209,0.889,0.426,0.154,1.475,0.234,1.267,2.032,2.52,0.296,0.25,0.267,0.288,0.259,0.23,0.224,0.238,0.263,0.298,0.466,0.548,0.512,0.491,0.0,0.0,0.269,0.153,0.507,0.321,0.163,0.671,0.233,0.327,0.938,1.124,0.273,0.244,0.244,0.285,0.255,0.219,0.215,0.213,0.245,0.278,0.344,0.419,0.436,0.426,0.0,0.0,0.688,0.267,0.21,0.473,0.721,0.668,0.295,0.307,0.172,0.234,0.304,0.473,0.517,0.591,0.222,0.208,0.766,0.175,0.44,0.219,0.397,0.691,0.9,0.598,0.0,0.0,1.124,0.188,0.51,0.927,1.291,1.352,0.735,0.285,0.336,0.504,0.307,0.969,0.985,1.056,0.228,0.536,1.665,0.383,1.459,0.246,0.751,1.153,1.779,1.0,0.0,0.0,0.776,0.187,0.265,0.73,0.855,1.206,0.383,0.199,0.257,0.365,0.232,1.005,0.862,0.832,0.198,0.399,1.411,0.458,1.322,0.399,0.816,0.832,1.516,0.931,0.0,0.0,0.451,0.31,0.418,0.38,0.298,0.836,0.178,0.241,0.228,0.186,0.157,0.408,0.535,0.607,0.168,0.156,0.701,0.157,0.288,0.35,0.419,0.292,0.549,0.419,0.0,0.0,0.54,1.041,1.537,0.726,0.36,1.183,0.394,0.681,0.217,0.369,0.214,0.676,0.831,1.474,0.477,0.185,1.157,0.335,0.211,0.237,0.196,0.168,0.185,0.189,0.0,0.0,0.601,1.41,2.249,0.771,0.62,1.225,0.6,0.865,0.457,0.426,0.234,1.092,1.018,2.073,0.796,0.225,1.632,0.367,0.209,0.213,0.193,0.162,0.163,0.175,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,2.979,3.198,3.153,3.073,3.193,2.811,2.305,2.345,1.861,0.672,0.152,0.155,0.168,0.167,0.139,0.122,0.126,0.133,0.332,0.353,0.316,0.179,1.226,1.414,0.0,0.0,2.102,2.249,2.505,2.659,2.6,2.196,2.092,2.311,1.643,0.385,0.167,0.19,0.208,0.2,0.184,0.18,0.17,0.154,0.568,1.471,1.235,0.21,1.712,2.275,0.0,0.0,2.515,2.64,2.575,2.478,2.367,1.869,1.612,1.956,1.567,0.373,0.202,0.193,0.186,0.172,0.157,0.154,0.155,0.16,0.993,1.86,0.372,0.627,0.725,1.364,0.0,0.0,2.888,2.554,2.371,2.737,4.673,5.338,2.786,0.576,0.239,0.228,0.219,0.208,0.189,0.174,0.164,0.17,0.183,0.221,0.906,1.812,1.344,0.426,1.493,0.323,0.0,0.0,0.549,0.526,0.525,0.534,0.624,0.656,0.45,0.248,0.194,0.198,0.217,0.227,0.209,0.188,0.188,0.191,0.185,0.198,0.124,0.964,2.368,3.566,4.496,4.532,0.0,0.0,2.573,2.248,2.012,2.354,4.273,4.898,2.36,0.178,0.187,0.199,0.197,0.191,0.188,0.191,0.187,0.166,0.156,0.181,2.158,6.273,7.594,6.538,6.732,8.297,0.0,0.0,1.426,1.43,1.519,1.277,1.072,0.767,0.814,1.771,2.457,2.151,1.365,1.203,1.927,2.355,2.204,1.638,1.349,1.817,0.366,2.917,4.14,3.518,2.593,2.673,0.0,0.0,0.8,0.792,0.854,0.984,1.075,0.907,0.637,0.768,0.967,0.785,0.577,0.71,0.913,0.828,0.619,0.665,0.751,0.619,0.462,0.347,0.41,0.599,0.534,0.289,0.0,0.0,1.553,1.677,1.888,1.722,1.533,1.213,1.049,1.674,2.24,1.961,1.205,1.066,1.787,2.199,2.052,1.506,1.227,1.758,1.651,0.947,1.0,1.31,1.311,1.205,0.0,0.0,1.468,1.626,1.402,1.094,1.077,0.901,0.758,1.052,0.811,0.158,0.467,0.62,0.832,0.75,0.543,0.583,0.666,0.557,0.422,0.297,0.376,0.651,0.691,0.486,0.0,0.0,2.695,2.946,2.852,2.507,2.44,2.076,1.744,2.379,2.33,0.877,0.059,0.059,0.058,0.046,0.046,0.063,0.083,0.094,0.091,0.078,0.064,0.056,0.057,0.079,0.0,0.0,2.049,2.238,2.151,1.997,2.019,1.662,1.252,1.654,1.617,0.593,0.039,0.048,0.057,0.048,0.047,0.058,0.073,0.088,0.107,0.124,0.182,0.278,0.336,0.396,0.0,0.0,2.63,2.885,2.786,2.474,2.447,2.113,1.745,2.347,2.272,0.81,0.069,0.057,0.052,0.07,0.076,0.067,0.067,0.078,0.092,0.104,0.18,0.326,0.465,0.545,0.0,0.0,1.879,1.506,1.864,2.63,2.529,1.61,1.642,2.036,2.257,2.849,3.217,3.039,2.509,1.868,1.658,2.078,1.79,1.364,2.126,2.821,2.769,2.274,1.367,0.613,0.0,0.0,0.812,0.887,1.076,1.423,1.637,1.316,1.137,1.315,1.469,1.705,2.054,1.969,1.537,1.224,1.184,1.416,1.215,1.112,1.794,2.116,1.762,1.426,0.984,0.443,0.0,0.0,1.873,1.446,1.78,2.557,2.498,1.611,1.655,2.037,2.209,2.752,3.123,2.97,2.457,1.807,1.556,1.952,1.646,1.213,1.974,2.663,2.587,2.013,1.003,0.187,0.0,0.0,1.188,1.047,0.852,1.059,1.401,1.157,1.052,1.087,0.993,1.079,1.357,1.541,1.37,0.904,0.877,1.051,0.776,0.93,1.673,2.008,1.662,1.296,0.79,0.173,0.0,0.0,3.093,2.918,1.626,1.15,1.839,1.874,1.414,0.999,1.009,1.523,1.802,2.338,2.504,1.424,1.053,1.4,0.804,0.151,0.067,0.068,0.071,0.069,0.079,0.086,0.0,0.0,1.249,1.223,0.642,0.588,1.045,0.989,0.758,0.657,0.622,0.839,0.96,1.207,1.408,0.942,0.746,0.882,0.467,0.084,0.071,0.086,0.092,0.076,0.065,0.08,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"r":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,1.132,1.696,2.559,2.554,2.259,0.696,1.004,1.037,1.373,4.854,2.978,0.267,0.294,0.31,0.287,0.27,0.241,0.336,9.962,8.087,2.76,0.286,0.272,0.563,0.0,0.0,0.901,2.045,1.158,1.894,1.403,0.608,1.064,0.416,2.191,3.835,2.497,0.26,0.269,0.284,0.268,0.275,0.247,0.267,9.718,7.316,2.566,1.594,1.723,0.688,0.0,0.0,0.721,1.54,0.59,0.446,0.38,0.343,0.549,1.452,1.87,1.274,0.862,0.251,0.267,0.265,0.255,0.281,0.26,0.213,7.976,7.407,0.44,1.889,2.084,1.119,0.0,0.0,1.009,1.603,0.984,0.404,0.218,0.273,0.388,0.951,0.852,0.329,0.281,0.264,0.299,0.279,0.264,0.279,0.258,0.221,7.239,8.198,0.693,0.595,1.088,0.682,0.0,0.0,0.684,1.036,0.679,0.355,0.282,0.257,0.301,0.353,0.325,0.299,0.298,0.295,0.33,0.314,0.275,0.276,0.26,0.259,7.885,7.994,0.893,1.208,0.604,2.588,0.0,0.0,0.405,0.331,0.196,0.269,0.43,0.386,0.232,0.241,0.329,0.331,0.289,0.299,0.316,0.309,0.203,0.204,0.365,0.312,5.325,4.608,0.895,1.48,0.73,2.039,0.0,0.0,0.506,0.5,0.829,0.885,1.091,1.22,0.395,0.218,0.408,0.379,0.267,0.274,0.279,0.278,0.48,0.448,0.475,0.447,1.001,0.252,0.271,0.587,0.847,0.478,0.0,0.0,0.546,0.582,1.377,1.262,1.361,1.855,0.738,0.206,0.285,0.243,0.223,0.274,0.421,0.199,0.578,0.263,0.243,0.466,0.842,1.35,0.263,0.204,0.228,0.253,0.0,0.0,0.361,0.89,1.095,0.5,0.745,1.867,1.383,0.562,0.549,0.631,0.237,0.348,0.861,0.396,0.496,0.842,0.322,0.299,1.013,0.486,0.229,0.213,0.265,0.266,0.0,0.0,1.072,1.597,1.232,0.188,0.333,1.914,2.29,1.108,0.634,0.786,0.24,0.314,0.713,0.506,0.38,1.145,0.53,0.228,0.952,0.296,0.213,0.2,0.613,0.392,0.0,0.0,1.414,1.163,0.675,0.197,0.221,1.412,2.173,1.264,0.301,0.401,0.273,0.642,0.272,0.499,0.272,0.753,0.687,0.249,0.923,0.619,0.248,0.284,1.365,0.843,0.0,0.0,1.561,1.544,0.374,0.226,0.197,0.991,2.24,1.613,0.607,0.406,0.363,0.776,0.499,0.558,0.232,0.382,0.603,0.214,0.81,0.919,0.363,0.287,1.389,0.878,0.0,0.0,1.345,1.03,1.105,0.417,0.621,1.823,1.804,0.705,0.443,0.413,0.277,0.304,0.203,0.756,0.687,0.444,0.288,0.346,0.334,1.364,0.928,0.212,0.614,0.437,0.0,0.0,1.463,1.517,1.665,0.774,1.352,2.649,1.681,0.23,0.305,0.354,0.222,0.179,0.214,0.8,1.009,0.915,0.193,0.665,0.216,1.55,1.403,0.196,0.223,0.24,0.0,0.0,1.224,1.104,1.644,0.893,1.206,2.314,1.709,0.532,0.44,0.228,0.26,0.331,0.203,0.277,0.468,1.016,0.274,0.632,0.193,1.184,0.948,0.243,0.194,0.252,0.0,0.0,1.243,0.926,1.598,1.098,1.273,2.033,1.691,0.817,0.696,0.423,0.304,0.571,0.188,0.968,0.371,0.938,0.371,0.452,0.185,0.9,0.663,0.35,0.2,0.281,0.0,0.0,1.144,0.827,0.891,0.7,1.12,1.285,0.977,0.549,0.282,0.269,0.246,0.4,0.177,0.569,0.274,0.346,0.368,0.345,0.228,0.569,0.442,0.19,0.177,0.182,0.0,0.0,0.295,0.2,0.395,0.328,0.433,0.29,0.276,0.224,0.176,0.176,0.187,0.188,0.194,0.186,0.198,0.245,0.378,0.355,0.349,0.281,0.242,0.196,0.18,0.216,0.0,0.0,0.411,0.44,0.346,0.229,0.195,0.215,0.219,0.177,0.18,0.185,0.194,0.186,0.211,0.198,0.188,0.309,0.415,0.424,0.34,0.221,0.249,0.205,0.179,0.259,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,3.798,2.783,1.667,2.423,3.467,3.505,3.886,3.98,2.99,1.718,0.523,0.066,0.056,0.052,0.053,0.052,0.057,0.072,0.186,0.313,0.951,0.405,0.968,1.063,0.0,0.0,2.804,1.878,2.545,4.203,3.913,2.994,2.948,4.074,5.26,3.791,1.097,0.079,0.061,0.05,0.065,0.076,0.06,0.082,0.555,1.219,1.055,0.207,1.898,2.494,0.0,0.0,1.375,1.581,2.075,3.29,3.73,3.316,3.665,4.132,3.587,2.122,0.605,0.048,0.048,0.048,0.048,0.047,0.048,0.089,1.466,2.454,0.386,1.102,0.262,0.858,0.0,0.0,1.812,1.936,1.939,1.935,2.055,2.164,2.079,1.45,0.418,0.158,0.164,0.138,0.091,0.05,0.055,0.06,0.056,0.078,0.674,1.717,1.467,0.356,1.294,0.292,0.0,0.0,2.165,1.285,0.75,0.425,0.302,0.281,0.305,0.279,0.231,0.24,0.221,0.199,0.183,0.166,0.153,0.153,0.154,0.198,0.312,0.36,1.801,3.401,4.644,4.691,0.0,0.0,0.285,0.212,0.274,0.636,0.573,0.357,0.231,0.367,0.401,0.318,0.301,0.324,0.346,0.379,0.648,1.127,1.218,1.171,1.375,6.721,8.608,7.285,7.62,9.427,0.0,0.0,0.337,0.163,0.723,1.926,1.939,0.888,0.279,0.089,0.153,0.101,0.056,0.063,0.09,0.131,0.315,0.713,0.937,1.058,0.54,4.09,6.083,5.813,4.707,4.609,0.0,0.0,0.173,0.203,0.4,0.323,0.157,0.35,0.32,0.253,0.576,1.171,1.543,1.6,1.378,1.373,1.469,0.91,0.719,0.921,0.699,1.036,1.613,1.778,1.803,1.698,0.0,0.0,1.273,2.674,3.236,2.611,2.585,2.974,1.891,0.615,0.688,1.458,1.958,2.01,1.693,1.607,1.749,1.198,0.817,0.83,0.669,1.031,1.382,1.425,1.495,1.529,0.0,0.0,0.153,0.261,0.184,0.221,0.241,0.202,0.301,0.244,0.201,0.735,1.008,0.721,0.398,0.351,0.37,0.453,0.57,0.666,0.762,0.685,0.585,0.643,0.87,0.989,0.0,0.0,1.492,1.181,0.256,0.418,0.5,0.78,1.277,0.835,0.181,1.008,1.355,0.943,0.712,0.701,0.723,0.704,0.698,0.783,0.781,0.654,0.677,0.845,0.783,0.586,0.0,0.0,0.217,0.377,0.242,0.312,0.337,0.381,0.519,0.542,0.41,0.377,0.327,0.356,0.524,0.615,0.47,0.128,0.203,0.346,0.31,0.242,0.693,1.037,0.669,0.183,0.0,0.0,1.839,1.503,1.411,0.42,0.556,1.981,2.197,0.893,0.386,0.245,0.172,0.239,0.772,0.817,0.228,0.756,1.05,0.558,0.589,0.569,0.411,1.092,0.722,0.122,0.0,0.0,0.301,0.446,0.58,0.607,0.532,0.401,0.281,0.236,0.389,0.564,0.652,0.729,0.745,0.545,0.319,0.414,0.411,0.484,0.529,0.413,0.316,0.547,0.625,0.696,0.0,0.0,0.054,0.734,1.118,1.155,0.988,0.279,0.333,0.636,1.314,1.72,1.596,1.726,2.075,1.391,0.132,0.421,0.375,0.325,0.179,0.138,0.634,1.119,1.413,1.641,0.0,0.0,0.494,1.106,1.455,1.442,1.093,0.618,0.311,0.363,0.675,0.796,0.74,0.806,0.852,0.711,0.54,0.641,0.784,0.674,0.556,0.524,0.46,0.51,0.586,0.639,0.0,0.0,0.194,0.863,1.876,2.885,2.898,1.735,0.756,0.357,1.069,1.373,1.229,1.403,1.732,1.421,0.936,1.32,1.797,1.75,1.87,1.754,1.265,1.271,1.571,1.792,0.0,0.0,0.323,1.099,1.418,1.256,0.845,0.361,0.252,0.427,0.505,0.447,0.427,0.498,0.521,0.426,0.332,0.329,0.373,0.437,0.485,0.462,0.431,0.425,0.404,0.399,0.0,0.0,0.662,0.611,0.598,0.586,0.563,0.553,0.547,0.544,0.536,0.488,0.43,0.39,0.351,0.381,0.403,0.336,0.297,0.306,0.321,0.327,0.346,0.31,0.279,0.293,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"m":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"minCells":155,"thr":0.12,"gate":0.6};
+  const lgName = {report:'성적서', label:'라벨'};
+  let lgC=null, lgX=null, lgM=null, lgMX=null, lgVotes=[], lgLast=null;
+  function lgOn(){ return !!LGP && $('lgRule').checked; }
+  function lgFeat(src, sw, sh, pts){
+    const {X0,CW,Y0,CH,GW,GH,S} = LG, w=GW*S, h=GH*S;
+    if(!lgC){ lgC=document.createElement('canvas'); lgC.width=w; lgC.height=h; lgX=lgC.getContext('2d',{willReadFrequently:true}); lgM=document.createElement('canvas'); lgM.width=w; lgM.height=h; lgMX=lgM.getContext('2d',{willReadFrequently:true}); }
+    const TL=pts[0], TR=pts[1], BL=pts[3];
+    const ex0=TR.x-TL.x, ex1=TR.y-TL.y, ey0=BL.x-TL.x, ey1=BL.y-TL.y;
+    const a=ex0*CW/w, b=ex1*CW/w, c=ey0*CH/h, d=ey1*CH/h, e=TL.x+X0*ex0+Y0*ey0, f=TL.y+X0*ex1+Y0*ey1;
+    const det=a*d-b*c; if(!isFinite(det) || Math.abs(det)<1e-9) return null;
+    const ia=d/det, ib=-b/det, ic=-c/det, id=a/det, ie=-(ia*e+ic*f), iff=-(ib*e+id*f);
+    lgX.setTransform(1,0,0,1,0,0); lgX.fillStyle='#000'; lgX.fillRect(0,0,w,h); lgX.imageSmoothingEnabled=true; lgX.imageSmoothingQuality='high'; lgX.setTransform(ia,ib,ic,id,ie,iff); lgX.drawImage(src,0,0,sw,sh);
+    lgMX.setTransform(1,0,0,1,0,0); lgMX.fillStyle='#000'; lgMX.fillRect(0,0,w,h); lgMX.setTransform(ia,ib,ic,id,ie,iff); lgMX.fillStyle='#fff'; lgMX.fillRect(0,0,sw,sh);
+    lgX.setTransform(1,0,0,1,0,0); lgMX.setTransform(1,0,0,1,0,0);
+    const D=lgX.getImageData(0,0,w,h).data, M=lgMX.getImageData(0,0,w,h).data;
+    const g=new Float32Array(GW*GH), ok=new Uint8Array(GW*GH);
+    for(let j=0;j<GH;j++) for(let i=0;i<GW;i++){ let s=0, m=0; for(let y=0;y<S;y++) for(let x=0;x<S;x++){ const p=((j*S+y)*w+(i*S+x))*4; s+=D[p]*.299+D[p+1]*.587+D[p+2]*.114; m+=M[p]; } g[j*GW+i]=s/(S*S); ok[j*GW+i]= (m/(S*S)) > 250 ? 1 : 0; }
+    const n=GW*GH, F=new Float32Array(2*n), V=new Uint8Array(n); let sa=0, sb=0, cn=0;
+    for(let j=1;j<GH-1;j++) for(let i=1;i<GW-1;i++){
+      let all=1; for(let y=-1;y<=1;y++) for(let x=-1;x<=1;x++) if(!ok[(j+y)*GW+i+x]) all=0; if(!all) continue;
+      const q=(y,x)=>g[(j+y)*GW+i+x];
+      const gx=-q(-1,-1)+q(-1,1)-2*q(0,-1)+2*q(0,1)-q(1,-1)+q(1,1), gy=-q(-1,-1)-2*q(-1,0)-q(-1,1)+q(1,-1)+2*q(1,0)+q(1,1);
+      F[j*GW+i]=Math.abs(gx); F[n+j*GW+i]=Math.abs(gy); V[j*GW+i]=1; sa+=Math.abs(gx); sb+=Math.abs(gy); cn++; }
+    if(cn < 40) return {F:null, V, n:cn};
+    const nm=(sa/cn+sb/cn)/2+1e-6; for(let k=0;k<2*n;k++) F[k]/=nm;
+    return {F, V, n:cn};
+  }
+  function lgScore(r){            // 반환: {score(+라벨/-성적서), gate(0~1, 학습한 모양과 닮은 정도)} 또는 null
+    const P=LGP; if(!P || !r || !r.F) return null; const n=LG.GW*LG.GH; let cnt=0;
+    for(let i=0;i<n;i++) if(r.V[i] && P.m[i]) cnt++;
+    if(cnt < P.minCells) return null;
+    let num=0, den=0, mx=0, my=0, k=0;
+    for(let c=0;c<2;c++) for(let i=0;i<n;i++) if(r.V[i] && P.m[i]){ const id=c*n+i, mid=(P.l[id]+P.r[id])/2, dd=P.l[id]-P.r[id]; num+=(r.F[id]-mid)*dd; den+=Math.abs(dd); mx+=r.F[id]; my+=mid; k++; }
+    mx/=k; my/=k; let sxy=0, sxx=0, syy=0;
+    for(let c=0;c<2;c++) for(let i=0;i<n;i++) if(r.V[i] && P.m[i]){ const id=c*n+i, mid=(P.l[id]+P.r[id])/2, x=r.F[id]-mx, y=mid-my; sxy+=x*y; sxx+=x*x; syy+=y*y; }
+    return {score: num/(den+1e-9), gate: sxy/Math.sqrt(sxx*syy+1e-9)};
+  }
+  function lgObserve(codes, bars){   // 프레임마다: 지금 보이는 QR이 성적서인지 라벨인지 한 표 던지기
+    if(!LGP) return; const now=Date.now(); lgVotes = lgVotes.filter(v => now - v.t < 1500);
+    const raws = [...new Set(codes.map(c => c.rawValue))]; if(raws.length !== 1 || !video.videoWidth) return;
+    const c = codes[0]; let pts = c.cornerPoints && c.cornerPoints.length===4 ? c.cornerPoints : null;
+    if(!pts && c.boundingBox){ const b=c.boundingBox; pts=[{x:b.x,y:b.y},{x:b.x+b.width,y:b.y},{x:b.x+b.width,y:b.y+b.height},{x:b.x,y:b.y+b.height}]; }
+    if(!pts) return; let r=null; try{ r = lgScore(lgFeat(video, video.videoWidth, video.videoHeight, pts)); }catch(e){}
+    lgLast = r; let k = null;
+    if(r && r.gate >= LGP.gate){ if(r.score > LGP.thr) k='label'; else if(r.score < -LGP.thr) k='report'; }
+    if(bars.length){ k = (k === 'report') ? null : 'label'; }     // 바코드가 함께 보이면 라벨 (성적서에는 바코드가 없음)
+    lgVotes.push({t:now, k});
+  }
+  function lgType(){            // 최근 1.2초 표 중 85% 이상 같은 종류일 때만 확정
+    const now=Date.now(), v = lgVotes.filter(x => x.k && now - x.t < 1200); if(v.length < 4) return null;
+    const nl = v.filter(x => x.k==='label').length, nr = v.length - nl;
+    return nl >= 0.85*v.length ? 'label' : nr >= 0.85*v.length ? 'report' : null;
+  }
+  window.__lg = {cfg:(o)=>{ Object.assign(LG,o); lgC=null; }, feat:(s,w,h,p)=>{ const r=lgFeat(s,w,h,p); return r && r.F ? {F:Array.from(r.F), V:Array.from(r.V)} : null; }, type:lgType, last:()=>lgLast, votes:()=>lgVotes};
   let viewHidden=false, lastScroll=0, ocrBusy=false, dark=false, emptyTicks=0, lastN=0, ocrWorker=null;
   let ocrNear=null, ocrDiag='', ocrAvgMs=0, ocrNoteText='', ocrNoteUntil=0, zxSkip=false, ocrRunning=false, ocrReady=false, ocrFail=false, ocrLoading=false, aSince=0, ocrRuns=0, ocrCand=null, ocrCandD=99, ocrCandAt=0, fbShown=false;
   const GUIDE = {x0:.05, x1:.95, y0:.40, y1:.60};     // 화면(미리보기) 기준 S/N 읽기 박스 위치
@@ -280,7 +337,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   function showHero(cls, big, detail){ $('pairResult').hidden=false; $('pairResult').className='resultHero '+cls; $('pairBig').textContent=big; $('pairDetail').textContent=detail; }
   function fmt(ts){ const d=new Date(ts); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
   function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function idleCam(){ if(cur.a && !cur.b && !cur.result && !(Date.now() < flashNoteUntil)){ if($('barRule').checked) return sv.aBar ? '라벨이 먼저 읽혔습니다 — [현재 제품 다시 스캔] 후 성적서 QR부터' : '첫 번째 QR 완료 — 라벨 QR을 아래 바코드까지 한 화면에 비추세요'; if(sv.raw && !sv.gone) return '첫 번째 QR 완료 — 다른 문서(라벨)의 QR로 옮겨 비추세요'; } if(Date.now() < flashNoteUntil) return flashNoteText; if(Date.now() < ocrNoteUntil) return ocrNoteText; if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
+  function idleCam(){ if(cur.a && !cur.b && !cur.result && !(Date.now() < flashNoteUntil)){ if(lgOn()) return cur.a.type ? `${lgName[cur.a.type]} QR 완료 — 이어서 ${lgName[cur.a.type==='label'?'report':'label']} QR을 비추세요` : '첫 번째 QR 완료 — 이어서 다른 문서의 QR을 비추세요'; if(sv.raw && !sv.gone) return '첫 번째 QR 완료 — 다른 문서(라벨)의 QR로 옮겨 비추세요'; } if(Date.now() < flashNoteUntil) return flashNoteText; if(Date.now() < ocrNoteUntil) return ocrNoteText; if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
   function idleText(){ return cur.a ? '첫 번째 QR 완료. 이어서 라벨 QR(바코드 포함)을 비추세요.' : `${records.length+ (cur.recNo?0:1)}번째 제품: 성적서/라벨 QR을 차례로 비추세요.`; }
 
   function renderSummary(){
@@ -288,7 +345,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     const pass=records.filter(r=>r.result==='PASS').length, fail=records.length-pass;
     $('totalCount').textContent=records.length; $('passCount').textContent=pass; $('failCount').textContent=fail;
     $('log').innerHTML = records.length ? records.slice().reverse().map(r=>{
-      const retry = (r.history && r.history.length ? ` <span class="muted">(재검증 · 이전 ${r.history.join('→')})</span>` : '') + (r.via ? ` <span class="muted">[${escapeHtml(r.via)} 대조]</span>` : '') + (r.same ? ` <span class="muted">[동일 값 QR${r.bar ? ' · 바코드 ' + escapeHtml(r.bar) : ''}]</span>` : '');
+      const retry = (r.history && r.history.length ? ` <span class="muted">(재검증 · 이전 ${r.history.join('→')})</span>` : '') + (r.via ? ` <span class="muted">[${escapeHtml(r.via)} 대조]</span>` : '') + (r.same ? ` <span class="muted">[동일 값 QR${r.types ? ' · ' + escapeHtml(r.types) : ''}]</span>` : '');
       return `<div class="logitem"><b>#${r.no}</b> <span class="${r.result==='PASS'?'pass':'fail'}">${r.result}</span>${retry} <span class="muted">${fmt(r.ts).slice(11)}</span><br><span class="muted">제품코드 ${escapeHtml(r.docItem)} ↔ ${escapeHtml(r.labelItem)}<br>S/N ${escapeHtml(r.docSn)} ↔ ${escapeHtml(r.labelSn)}</span></div>`;
     }).join('') : '<div class="muted">아직 검증된 제품이 없습니다.</div>';
     const author=$('author').value.trim()||'미입력', line=$('line').value.trim()||'미입력';
@@ -334,13 +391,12 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     else { setStatus('첫 번째 QR 완료. 이어서 라벨 QR(바코드 포함)을 비추세요.','wait'); camMsg(idleCam()); }
   }
 
-  function acceptSame(raw, format){
+  function acceptSame(raw, format, typesNote){
     const k = extractKeys(raw, cur.a.itemNo);
-    cur.b = {raw, format, itemNo:k.itemNo, sn:k.sn}; sv = SV0();
+    cur.b = {raw, format, itemNo:k.itemNo, sn:k.sn, type: lgOn() ? lgType() : null}; sv = SV0(); lgVotes = [];
     paint('b', cur.b); buzz(40); beep(1400,.06); save();
-    const useBar = $('barRule').checked && (Date.now() - barAt) < BAR_MS;
-    comparePair('', `동일 값 QR 2개 확인${useBar ? ' · 라벨 바코드 ' + barLast : ''} · ${cur.a.itemNo} · ${cur.a.sn}`);
-    if(useBar){ const r = records.find(x => x.no === cur.recNo); if(r){ r.bar = barLast; save(); try{ renderSummary(); }catch(e){} } }
+    comparePair('', `동일 값 QR · 서로 다른 문서 확인${typesNote ? ' (' + typesNote + ')' : ''} · ${cur.a.itemNo} · ${cur.a.sn}`);
+    const r = records.find(x => x.no === cur.recNo); if(r){ r.types = typesNote; save(); try{ renderSummary(); }catch(e){} }
   }
 
   function comparePair(via, note){
@@ -675,8 +731,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     }
   }
 
-  try{ if(localStorage.getItem('scmq_bar_v1') === '0') $('barRule').checked = false; }catch(e){}
-  $('barRule').addEventListener('change', () => { try{ localStorage.setItem('scmq_bar_v1', $('barRule').checked ? '1' : '0'); }catch(e){} stable = {raw:'', n:0}; });
+  try{ if(localStorage.getItem('scmq_lg_v1') === '0') $('lgRule').checked = false; }catch(e){}
+  $('lgRule').addEventListener('change', () => { try{ localStorage.setItem('scmq_lg_v1', $('lgRule').checked ? '1' : '0'); }catch(e){} stable = {raw:'', n:0}; lgVotes = []; });
 
   // ===== 실시간 인식 =====
   async function getDetector(){
@@ -693,20 +749,15 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     const bars = codes.filter(c => c.format === 'code_128');
     if(bars.length){ barAt = Date.now(); barLast = bars[0].rawValue || ''; codes = codes.filter(c => c.format !== 'code_128'); }
     drawOverlay(codes);
+    if(lgOn()) lgObserve(codes, bars);
     const now = Date.now();
-    if(cur.a && !cur.b && !cur.result){      // [품질용] 첫 QR 추적: 라벨 바코드 동반 여부 / 화면에서 사라졌는지
-      const useBar = $('barRule').checked;
-      if(sv.raw !== cur.a.raw) sv = {raw:cur.a.raw, seen:now, gone:false, miss:0, lum:lum(), t0:now, aBar:(now - barAt) < BAR_MS};
+    if(cur.a && !cur.b && !cur.result){      // [품질용] 첫 QR 추적
+      if(sv.raw !== cur.a.raw) sv = {raw:cur.a.raw, seen:now, gone:false, miss:0, lum:lum(), t0:now};
       const aVis = codes.some(c => c.rawValue === cur.a.raw);
-      if(aVis && bars.length && now - sv.t0 < 1000) sv.aBar = true;      // 첫 QR을 읽는 순간 바코드가 같이 보였다 = 첫 QR이 라벨
-      { const bx = codes.filter(c => c.rawValue === cur.a.raw && c.boundingBox); let two = false;   // 같은 값 QR 2개가 한 화면에 동시에 보이는지(서로 다른 위치)
-        for(let i=0;i<bx.length && !two;i++) for(let j=i+1;j<bx.length;j++){ const p=bx[i].boundingBox, q=bx[j].boundingBox, sz=Math.max(p.width,p.height,q.width,q.height); if(Math.hypot((p.x+p.width/2)-(q.x+q.width/2),(p.y+p.height/2)-(q.y+q.height/2)) > 0.7*sz){ two=true; break; } }
-        sv.dual = (two && (!useBar || (now - barAt) < BAR_MS)) ? (sv.dual||0)+1 : 0;
-        if(sv.dual >= need && !viewHidden && !paused){ stable = {raw:'', n:0}; acceptSame(cur.a.raw, bx[0].format||''); return; } }
-      if(aVis){ if(!sv.gone){ sv.seen = now; sv.miss = 0; sv.lum = lum(); } }
+      if(lgOn()){ if(aVis && !cur.a.type && now - sv.t0 < 2500){ const t = lgType(); if(t){ cur.a.type = t; save(); camMsg(`${lgName[t]} QR 완료 — 이어서 ${lgName[t==='label'?'report':'label']} QR을 비추세요`); } } }
+      else if(aVis){ if(!sv.gone){ sv.seen = now; sv.miss = 0; sv.lum = lum(); } }
       else {
         const L = lum(), dk = L >= 0 && L < 70;
-        // 어두운 화면에서는 '못 읽은 것'과 '치운 것'을 구분하기 어려움 → 첫 QR을 볼 때와 밝기가 크게 달라졌을 때만 치운 것으로 인정
         const changed = L >= 0 && sv.lum >= 0 && Math.abs(L - sv.lum) > 0.25 * Math.max(sv.lum, 40);
         if(!dk || changed){ sv.miss++; if(now - sv.seen >= SAME_GONE_MS && sv.miss >= 3) sv.gone = true; }
       }
@@ -726,14 +777,16 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     const fmtName = (codes.find(c => c.rawValue === raw)||{}).format || '';
     if(cur.b && cur.b.raw === raw) return;   // 이미 받은 코드
     if(cur.a && cur.a.raw === raw){
-      // [품질용] 성적서·내부 라벨의 QR 값이 같을 수 있음 → '바코드가 함께 보이는 QR = 내부 라벨'로 구분 (성적서에는 바코드가 없음)
+      // [품질용] 성적서·라벨의 QR 값이 같을 수 있음 → 같은 값이어도 '서로 다른 종류의 문서'가 한 번씩 읽혀야 짝으로 인정
       if(cur.b || cur.result) return;
-      if($('barRule').checked){
-        const barNow = (Date.now() - barAt) < BAR_MS;
-        if(!barNow){ camMsg(sv.aBar ? '라벨이 먼저 읽혔습니다. [현재 제품 다시 스캔] 후 성적서 QR부터 찍어 주세요' : '같은 QR입니다. 라벨 QR은 아래 바코드까지 한 화면에 보이게 비추세요'); return; }
-        if(sv.aBar){ camMsg('바코드가 있는 라벨이 두 번 보입니다. 성적서 QR을 비추세요'); return; }
+      if(lgOn()){
+        const A = cur.a.type, T = lgType();
+        if(!A){ camMsg('첫 QR의 문서 종류를 아직 판별하지 못했습니다. 문서 전체가 보이게 비춰 보세요'); return; }
+        if(!T){ camMsg(`${lgName[A]} QR 완료 — 문서 종류 확인 중… 문서 전체가 보이게 비춰 주세요`); return; }
+        if(T === A){ camMsg(`같은 종류(${lgName[A]})가 계속 보입니다. ${lgName[A==='label'?'report':'label']} QR을 비추세요`); return; }
       } else if(!sv.gone){ camMsg('같은 QR이 계속 보입니다. 다른 문서(라벨)의 QR로 옮겨 비추세요'); return; }
-      stable = {raw:'', n:0}; acceptSame(raw, fmtName); return;
+      const typesNote = lgOn() ? `${lgName[cur.a.type]}+${lgName[lgType()]}` : '';
+      stable = {raw:'', n:0}; acceptSame(raw, fmtName, typesNote); return;
     }
     stable = {raw:'', n:0};
     accept(raw, fmtName);
