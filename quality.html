@@ -43,7 +43,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><h1>SCM 제품검증</h1><span class="badge">품질용 · 동일 값 QR 허용</span></div>
+  <div class="top"><h1>SCM 제품검증</h1><span class="badge">품질용 · 라벨 바코드 구분</span></div>
 
   <div id="resetNotice" class="status wait" hidden style="margin-top:12px">
     <div id="resetNoticeMsg"></div>
@@ -81,6 +81,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     <input id="zoom" type="range" hidden>
     <label class="chk"><input type="checkbox" id="auto" checked>PASS면 자동으로 다음 제품으로 넘기기</label>
     <label class="chk"><input type="checkbox" id="enh" checked>어두운 곳·그림자 인식 강화 (조명 자동 보정)</label>
+    <label class="chk"><input type="checkbox" id="barRule" checked>같은 값 QR 구분: 바코드가 함께 보이는 QR을 내부 라벨로 인식 (성적서 → 라벨 순서 · 같은 QR 두 번 찍어도 PASS 방지) — 라벨에 바코드가 없으면 끄세요</label>
     <label class="chk"><input type="checkbox" id="autoOcr" checked>두 번째 QR이 안 읽히면 S/N 글자를 자동 인식 (일치하면 확인 버튼 표시)</label>
     <label class="chk"><input type="checkbox" id="autoFlash" checked>어두우면 플래시 자동 켜기 (빛 반사가 심하면 노출을 낮추고 그래도 심하면 자동으로 끔)</label>
     <label for="sens" style="margin-top:12px">인식 확정 시간 (짧을수록 빨리 인식, 길수록 오인식 감소)</label>
@@ -194,11 +195,12 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   let cur = {a:null, b:null, result:null, recNo:null};
   let ignore = new Map();              // raw -> 마지막으로 화면에서 본 시각
   let stable = {raw:'', n:0};
-  const SAME_GONE_MS = 500;            // [품질용] 첫 QR이 화면에서 사라진 것으로 인정하는 최소 시간 (동일 값 QR 두 번째 인정용)
-  let sv = {raw:'', seen:0, gone:false, miss:0, lum:-1};   // 첫 QR 가시 추적
+  const SAME_GONE_MS = 500, BAR_MS = 1500;   // [품질용] 첫 QR이 사라진 것으로 인정하는 시간 / 바코드를 '방금 봤다'고 보는 시간
+  let barAt = 0, barLast = '';                // 마지막으로 라벨 바코드(code_128)가 보인 시각·값
+  let sv = {raw:'', seen:0, gone:false, miss:0, lum:-1, t0:0, aBar:false};   // 첫 QR 추적
   let lumCv=null, lumCtx=null;
   function lum(){ try{ if(!video.videoWidth) return -1; if(!lumCv){ lumCv=document.createElement('canvas'); lumCv.width=16; lumCv.height=12; lumCtx=lumCv.getContext('2d',{willReadFrequently:true}); } lumCtx.drawImage(video,0,0,16,12); const d=lumCtx.getImageData(0,0,16,12).data; let t=0; for(let i=0;i<d.length;i+=4) t+=d[i]*.299+d[i+1]*.587+d[i+2]*.114; return t/(d.length/4); }catch(e){ return -1; } }
-
+  const SV0 = () => ({raw:'', seen:0, gone:false, miss:0, lum:-1, t0:0, aBar:false});
   let viewHidden=false, lastScroll=0, ocrBusy=false, dark=false, emptyTicks=0, lastN=0, ocrWorker=null;
   let ocrNear=null, ocrDiag='', ocrAvgMs=0, ocrNoteText='', ocrNoteUntil=0, zxSkip=false, ocrRunning=false, ocrReady=false, ocrFail=false, ocrLoading=false, aSince=0, ocrRuns=0, ocrCand=null, ocrCandD=99, ocrCandAt=0, fbShown=false;
   const GUIDE = {x0:.05, x1:.95, y0:.40, y1:.60};     // 화면(미리보기) 기준 S/N 읽기 박스 위치
@@ -278,15 +280,15 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   function showHero(cls, big, detail){ $('pairResult').hidden=false; $('pairResult').className='resultHero '+cls; $('pairBig').textContent=big; $('pairDetail').textContent=detail; }
   function fmt(ts){ const d=new Date(ts); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
   function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function idleCam(){ if(cur.a && !cur.b && !cur.result && sv.raw && !sv.gone && !(Date.now() < flashNoteUntil)) return '첫 번째 QR 완료 — 다른 문서(라벨)의 QR로 옮겨 비추세요'; if(Date.now() < flashNoteUntil) return flashNoteText; if(Date.now() < ocrNoteUntil) return ocrNoteText; if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
-  function idleText(){ return cur.a ? '첫 번째 QR 완료. 이어서 다른 문서(라벨)의 QR로 옮겨 비추세요.' : `${records.length+ (cur.recNo?0:1)}번째 제품: 성적서/라벨 QR을 차례로 비추세요.`; }
+  function idleCam(){ if(cur.a && !cur.b && !cur.result && !(Date.now() < flashNoteUntil)){ if($('barRule').checked) return sv.aBar ? '라벨이 먼저 읽혔습니다 — [현재 제품 다시 스캔] 후 성적서 QR부터' : '첫 번째 QR 완료 — 라벨 QR을 아래 바코드까지 한 화면에 비추세요'; if(sv.raw && !sv.gone) return '첫 번째 QR 완료 — 다른 문서(라벨)의 QR로 옮겨 비추세요'; } if(Date.now() < flashNoteUntil) return flashNoteText; if(Date.now() < ocrNoteUntil) return ocrNoteText; if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
+  function idleText(){ return cur.a ? '첫 번째 QR 완료. 이어서 라벨 QR(바코드 포함)을 비추세요.' : `${records.length+ (cur.recNo?0:1)}번째 제품: 성적서/라벨 QR을 차례로 비추세요.`; }
 
   function renderSummary(){
     try{ updateResetInfo(); }catch(e){}
     const pass=records.filter(r=>r.result==='PASS').length, fail=records.length-pass;
     $('totalCount').textContent=records.length; $('passCount').textContent=pass; $('failCount').textContent=fail;
     $('log').innerHTML = records.length ? records.slice().reverse().map(r=>{
-      const retry = (r.history && r.history.length ? ` <span class="muted">(재검증 · 이전 ${r.history.join('→')})</span>` : '') + (r.via ? ` <span class="muted">[${escapeHtml(r.via)} 대조]</span>` : '') + (r.same ? ` <span class="muted">[동일 값 QR]</span>` : '');
+      const retry = (r.history && r.history.length ? ` <span class="muted">(재검증 · 이전 ${r.history.join('→')})</span>` : '') + (r.via ? ` <span class="muted">[${escapeHtml(r.via)} 대조]</span>` : '') + (r.same ? ` <span class="muted">[동일 값 QR${r.bar ? ' · 바코드 ' + escapeHtml(r.bar) : ''}]</span>` : '');
       return `<div class="logitem"><b>#${r.no}</b> <span class="${r.result==='PASS'?'pass':'fail'}">${r.result}</span>${retry} <span class="muted">${fmt(r.ts).slice(11)}</span><br><span class="muted">제품코드 ${escapeHtml(r.docItem)} ↔ ${escapeHtml(r.labelItem)}<br>S/N ${escapeHtml(r.docSn)} ↔ ${escapeHtml(r.labelSn)}</span></div>`;
     }).join('') : '<div class="muted">아직 검증된 제품이 없습니다.</div>';
     const author=$('author').value.trim()||'미입력', line=$('line').value.trim()||'미입력';
@@ -329,14 +331,16 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     }
     cur[slot] = rec; paint(slot, rec); buzz(40); beep(1400,.06); save();
     if(cur.a && cur.b) comparePair();
-    else { setStatus('첫 번째 QR 완료. 이어서 다른 문서(라벨)의 QR로 옮겨 비추세요.','wait'); camMsg(idleCam()); }
+    else { setStatus('첫 번째 QR 완료. 이어서 라벨 QR(바코드 포함)을 비추세요.','wait'); camMsg(idleCam()); }
   }
 
   function acceptSame(raw, format){
     const k = extractKeys(raw, cur.a.itemNo);
-    cur.b = {raw, format, itemNo:k.itemNo, sn:k.sn}; sv = {raw:'', seen:0, gone:false, miss:0, lum:-1};
+    cur.b = {raw, format, itemNo:k.itemNo, sn:k.sn}; sv = SV0();
     paint('b', cur.b); buzz(40); beep(1400,.06); save();
-    comparePair('', `동일 값 QR 2개 확인 · ${cur.a.itemNo} · ${cur.a.sn}`);
+    const useBar = $('barRule').checked && (Date.now() - barAt) < BAR_MS;
+    comparePair('', `동일 값 QR 2개 확인${useBar ? ' · 라벨 바코드 ' + barLast : ''} · ${cur.a.itemNo} · ${cur.a.sn}`);
+    if(useBar){ const r = records.find(x => x.no === cur.recNo); if(r){ r.bar = barLast; save(); try{ renderSummary(); }catch(e){} } }
   }
 
   function comparePair(via, note){
@@ -671,34 +675,42 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     }
   }
 
+  try{ if(localStorage.getItem('scmq_bar_v1') === '0') $('barRule').checked = false; }catch(e){}
+  $('barRule').addEventListener('change', () => { try{ localStorage.setItem('scmq_bar_v1', $('barRule').checked ? '1' : '0'); }catch(e){} stable = {raw:'', n:0}; });
+
   // ===== 실시간 인식 =====
   async function getDetector(){
     if(detector) return detector;
     if(!('BarcodeDetector' in window)) throw new Error('이 브라우저는 코드 인식(BarcodeDetector)을 지원하지 않습니다. Chrome을 최신 버전으로 업데이트해 주세요.');
     const supported = await BarcodeDetector.getSupportedFormats();
-    const wanted = ['qr_code','data_matrix'].filter(x => supported.includes(x));
+    const wanted = ['qr_code','data_matrix','code_128'].filter(x => supported.includes(x));
     if(!wanted.length) throw new Error('이 기기에서 QR/DataMatrix 인식 기능을 사용할 수 없습니다.');
     detector = new BarcodeDetector({formats:wanted});
     return detector;
   }
 
   function handleFrame(codes){
+    const bars = codes.filter(c => c.format === 'code_128');
+    if(bars.length){ barAt = Date.now(); barLast = bars[0].rawValue || ''; codes = codes.filter(c => c.format !== 'code_128'); }
     drawOverlay(codes);
     const now = Date.now();
-    if(cur.a && !cur.b && !cur.result){      // [품질용] 첫 QR이 한동안 완전히 사라졌는지 추적
-      if(sv.raw !== cur.a.raw) sv = {raw:cur.a.raw, seen:now, gone:false, miss:0, lum:lum()};
+    if(cur.a && !cur.b && !cur.result){      // [품질용] 첫 QR 추적: 라벨 바코드 동반 여부 / 화면에서 사라졌는지
+      const useBar = $('barRule').checked;
+      if(sv.raw !== cur.a.raw) sv = {raw:cur.a.raw, seen:now, gone:false, miss:0, lum:lum(), t0:now, aBar:(now - barAt) < BAR_MS};
+      const aVis = codes.some(c => c.rawValue === cur.a.raw);
+      if(aVis && bars.length && now - sv.t0 < 1000) sv.aBar = true;      // 첫 QR을 읽는 순간 바코드가 같이 보였다 = 첫 QR이 라벨
       { const bx = codes.filter(c => c.rawValue === cur.a.raw && c.boundingBox); let two = false;   // 같은 값 QR 2개가 한 화면에 동시에 보이는지(서로 다른 위치)
         for(let i=0;i<bx.length && !two;i++) for(let j=i+1;j<bx.length;j++){ const p=bx[i].boundingBox, q=bx[j].boundingBox, sz=Math.max(p.width,p.height,q.width,q.height); if(Math.hypot((p.x+p.width/2)-(q.x+q.width/2),(p.y+p.height/2)-(q.y+q.height/2)) > 0.7*sz){ two=true; break; } }
-        sv.dual = two ? (sv.dual||0)+1 : 0;
+        sv.dual = (two && (!useBar || (now - barAt) < BAR_MS)) ? (sv.dual||0)+1 : 0;
         if(sv.dual >= need && !viewHidden && !paused){ stable = {raw:'', n:0}; acceptSame(cur.a.raw, bx[0].format||''); return; } }
-      if(codes.some(c => c.rawValue === cur.a.raw)){ if(!sv.gone){ sv.seen = now; sv.miss = 0; sv.lum = lum(); } }
+      if(aVis){ if(!sv.gone){ sv.seen = now; sv.miss = 0; sv.lum = lum(); } }
       else {
         const L = lum(), dk = L >= 0 && L < 70;
         // 어두운 화면에서는 '못 읽은 것'과 '치운 것'을 구분하기 어려움 → 첫 QR을 볼 때와 밝기가 크게 달라졌을 때만 치운 것으로 인정
         const changed = L >= 0 && sv.lum >= 0 && Math.abs(L - sv.lum) > 0.25 * Math.max(sv.lum, 40);
         if(!dk || changed){ sv.miss++; if(now - sv.seen >= SAME_GONE_MS && sv.miss >= 3) sv.gone = true; }
       }
-    } else sv = {raw:'', seen:0, gone:false, miss:0, lum:-1};
+    } else sv = SV0();
     for(const c of codes){ if(ignore.has(c.rawValue)) ignore.set(c.rawValue, now); }   // 아직 화면에 있으면 갱신
     for(const [raw, t] of ignore){ if(now - t > RELEASE_MS) ignore.delete(raw); }      // 사라진 지 오래되면 해제
     const fresh = [...new Set(codes.map(c => c.rawValue).filter(r => !ignore.has(r)))];
@@ -714,9 +726,13 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     const fmtName = (codes.find(c => c.rawValue === raw)||{}).format || '';
     if(cur.b && cur.b.raw === raw) return;   // 이미 받은 코드
     if(cur.a && cur.a.raw === raw){
-      // [품질용] 성적서·내부 라벨의 QR 값이 같을 수 있음 → 첫 QR이 화면에서 사라졌다가(2초+) 같은 값이 다시 나타나면 두 번째 QR로 인정
+      // [품질용] 성적서·내부 라벨의 QR 값이 같을 수 있음 → '바코드가 함께 보이는 QR = 내부 라벨'로 구분 (성적서에는 바코드가 없음)
       if(cur.b || cur.result) return;
-      if(!sv.gone){ camMsg('같은 QR이 계속 보입니다. 다른 문서(라벨)의 QR로 옮겨 비추세요'); return; }
+      if($('barRule').checked){
+        const barNow = (Date.now() - barAt) < BAR_MS;
+        if(!barNow){ camMsg(sv.aBar ? '라벨이 먼저 읽혔습니다. [현재 제품 다시 스캔] 후 성적서 QR부터 찍어 주세요' : '같은 QR입니다. 라벨 QR은 아래 바코드까지 한 화면에 보이게 비추세요'); return; }
+        if(sv.aBar){ camMsg('바코드가 있는 라벨이 두 번 보입니다. 성적서 QR을 비추세요'); return; }
+      } else if(!sv.gone){ camMsg('같은 QR이 계속 보입니다. 다른 문서(라벨)의 QR로 옮겨 비추세요'); return; }
       stable = {raw:'', n:0}; acceptSame(raw, fmtName); return;
     }
     stable = {raw:'', n:0};
@@ -728,7 +744,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     busy = true;
     try{
       let codes = (await detector.detect(video)).filter(c => c.rawValue);
-      if(codes.length){ dark = false; emptyTicks = 0; }
+      if(codes.some(c => c.format !== 'code_128')){ dark = false; emptyTicks = 0; }
       else if($('enh').checked && !(window.__scmEngine === 'zxing' && (zxSkip = !zxSkip))){   // 못 찾았을 때마다 보정 화면 3가지를 번갈아 재시도 (아이폰 엔진은 2번에 1번)
         const v = emptyTicks++ % 3;
         const f = v===0 ? flatFrame(1100, 650000, null, enhCv, enhCtx)
@@ -738,9 +754,9 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
           dark = f.avg < 70;
           const found = (await detector.detect(f.canvas)).filter(c => c.rawValue);
           const k = 1 / f.scale, X = x => f.sx + x*k, Y = y => f.sy + y*k;
-          codes = found.map(c => ({rawValue:c.rawValue, format:c.format,
+          codes = codes.filter(c => c.format === 'code_128').concat(found.map(c => ({rawValue:c.rawValue, format:c.format,
             boundingBox: c.boundingBox ? {x:X(c.boundingBox.x), y:Y(c.boundingBox.y), width:c.boundingBox.width*k, height:c.boundingBox.height*k} : null,
-            cornerPoints: (c.cornerPoints||[]).map(p => ({x:X(p.x), y:Y(p.y)}))}));
+            cornerPoints: (c.cornerPoints||[]).map(p => ({x:X(p.x), y:Y(p.y)}))})));
         }
       }
       handleFrame(codes);
@@ -887,7 +903,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     for(const opt of [null, {resizeWidth:1600,resizeQuality:'high'}, {resizeWidth:1000,resizeQuality:'high'}]){
       let bmp;
       try{ bmp = opt ? await createImageBitmap(file,opt) : await createImageBitmap(file); }catch(e){ continue; }
-      try{ const codes=(await det.detect(bmp)).filter(c=>c.rawValue); if(codes.length) return codes; }
+      try{ const codes=(await det.detect(bmp)).filter(c=>c.rawValue && c.format!=='code_128'); if(codes.length) return codes; }
       finally{ if(bmp && bmp.close) bmp.close(); }
     }
     throw new Error('코드를 찾지 못했습니다. QR/DataMatrix가 크게 보이도록 다시 촬영해 주세요.');
