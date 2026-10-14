@@ -194,8 +194,11 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   let cur = {a:null, b:null, result:null, recNo:null};
   let ignore = new Map();              // raw -> 마지막으로 화면에서 본 시각
   let stable = {raw:'', n:0};
-  const SAME_GONE_MS = 2000;           // [품질용] 첫 QR이 화면에서 사라진 것으로 인정하는 최소 시간 (동일 값 QR 두 번째 인정용)
-  let sv = {raw:'', seen:0, gone:false, miss:0};   // 첫 QR 가시 추적
+  const SAME_GONE_MS = 500;            // [품질용] 첫 QR이 화면에서 사라진 것으로 인정하는 최소 시간 (동일 값 QR 두 번째 인정용)
+  let sv = {raw:'', seen:0, gone:false, miss:0, lum:-1};   // 첫 QR 가시 추적
+  let lumCv=null, lumCtx=null;
+  function lum(){ try{ if(!video.videoWidth) return -1; if(!lumCv){ lumCv=document.createElement('canvas'); lumCv.width=16; lumCv.height=12; lumCtx=lumCv.getContext('2d',{willReadFrequently:true}); } lumCtx.drawImage(video,0,0,16,12); const d=lumCtx.getImageData(0,0,16,12).data; let t=0; for(let i=0;i<d.length;i+=4) t+=d[i]*.299+d[i+1]*.587+d[i+2]*.114; return t/(d.length/4); }catch(e){ return -1; } }
+
   let viewHidden=false, lastScroll=0, ocrBusy=false, dark=false, emptyTicks=0, lastN=0, ocrWorker=null;
   let ocrNear=null, ocrDiag='', ocrAvgMs=0, ocrNoteText='', ocrNoteUntil=0, zxSkip=false, ocrRunning=false, ocrReady=false, ocrFail=false, ocrLoading=false, aSince=0, ocrRuns=0, ocrCand=null, ocrCandD=99, ocrCandAt=0, fbShown=false;
   const GUIDE = {x0:.05, x1:.95, y0:.40, y1:.60};     // 화면(미리보기) 기준 S/N 읽기 박스 위치
@@ -275,8 +278,8 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   function showHero(cls, big, detail){ $('pairResult').hidden=false; $('pairResult').className='resultHero '+cls; $('pairBig').textContent=big; $('pairDetail').textContent=detail; }
   function fmt(ts){ const d=new Date(ts); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
   function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function idleCam(){ if(Date.now() < flashNoteUntil) return flashNoteText; if(Date.now() < ocrNoteUntil) return ocrNoteText; if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
-  function idleText(){ return cur.a ? '첫 번째 QR 완료. 이 문서를 치우고 두 번째 QR(다른 문서)을 비추세요.' : `${records.length+ (cur.recNo?0:1)}번째 제품: 성적서/라벨 QR을 차례로 비추세요.`; }
+  function idleCam(){ if(cur.a && !cur.b && !cur.result && sv.raw && !sv.gone && !(Date.now() < flashNoteUntil)) return '첫 번째 QR 완료 — 다른 문서(라벨)의 QR로 옮겨 비추세요'; if(Date.now() < flashNoteUntil) return flashNoteText; if(Date.now() < ocrNoteUntil) return ocrNoteText; if(dark && stream && !torchOn) return '어두워요 — 플래시를 켜거나 조명을 밝혀 주세요'; return cur.a ? '첫 번째 QR 완료 — 두 번째 QR을 비추세요' : 'QR을 사각형 안에 비추세요'; }
+  function idleText(){ return cur.a ? '첫 번째 QR 완료. 이어서 다른 문서(라벨)의 QR로 옮겨 비추세요.' : `${records.length+ (cur.recNo?0:1)}번째 제품: 성적서/라벨 QR을 차례로 비추세요.`; }
 
   function renderSummary(){
     try{ updateResetInfo(); }catch(e){}
@@ -326,12 +329,12 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     }
     cur[slot] = rec; paint(slot, rec); buzz(40); beep(1400,.06); save();
     if(cur.a && cur.b) comparePair();
-    else { setStatus('첫 번째 QR 완료. 이 문서를 치우고 두 번째 QR(다른 문서)을 비추세요.','wait'); camMsg(idleCam()); }
+    else { setStatus('첫 번째 QR 완료. 이어서 다른 문서(라벨)의 QR로 옮겨 비추세요.','wait'); camMsg(idleCam()); }
   }
 
   function acceptSame(raw, format){
     const k = extractKeys(raw, cur.a.itemNo);
-    cur.b = {raw, format, itemNo:k.itemNo, sn:k.sn}; sv = {raw:'', seen:0, gone:false, miss:0};
+    cur.b = {raw, format, itemNo:k.itemNo, sn:k.sn}; sv = {raw:'', seen:0, gone:false, miss:0, lum:-1};
     paint('b', cur.b); buzz(40); beep(1400,.06); save();
     comparePair('', `동일 값 QR 2개 확인 · ${cur.a.itemNo} · ${cur.a.sn}`);
   }
@@ -682,11 +685,20 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
   function handleFrame(codes){
     drawOverlay(codes);
     const now = Date.now();
-    if(cur.a && !cur.b && !cur.result){      // [품질용] 첫 QR이 한동안 완전히 사라졌는지 (어두워서 못 읽은 프레임은 사라진 것으로 세지 않음)
-      if(sv.raw !== cur.a.raw) sv = {raw:cur.a.raw, seen:now, gone:false, miss:0};
-      if(codes.some(c => c.rawValue === cur.a.raw)){ if(!sv.gone){ sv.seen = now; sv.miss = 0; } }
-      else if(!dark){ sv.miss++; if(now - sv.seen >= SAME_GONE_MS && sv.miss >= 4) sv.gone = true; }
-    } else sv = {raw:'', seen:0, gone:false, miss:0};
+    if(cur.a && !cur.b && !cur.result){      // [품질용] 첫 QR이 한동안 완전히 사라졌는지 추적
+      if(sv.raw !== cur.a.raw) sv = {raw:cur.a.raw, seen:now, gone:false, miss:0, lum:lum()};
+      { const bx = codes.filter(c => c.rawValue === cur.a.raw && c.boundingBox); let two = false;   // 같은 값 QR 2개가 한 화면에 동시에 보이는지(서로 다른 위치)
+        for(let i=0;i<bx.length && !two;i++) for(let j=i+1;j<bx.length;j++){ const p=bx[i].boundingBox, q=bx[j].boundingBox, sz=Math.max(p.width,p.height,q.width,q.height); if(Math.hypot((p.x+p.width/2)-(q.x+q.width/2),(p.y+p.height/2)-(q.y+q.height/2)) > 0.7*sz){ two=true; break; } }
+        sv.dual = two ? (sv.dual||0)+1 : 0;
+        if(sv.dual >= need && !viewHidden && !paused){ stable = {raw:'', n:0}; acceptSame(cur.a.raw, bx[0].format||''); return; } }
+      if(codes.some(c => c.rawValue === cur.a.raw)){ if(!sv.gone){ sv.seen = now; sv.miss = 0; sv.lum = lum(); } }
+      else {
+        const L = lum(), dk = L >= 0 && L < 70;
+        // 어두운 화면에서는 '못 읽은 것'과 '치운 것'을 구분하기 어려움 → 첫 QR을 볼 때와 밝기가 크게 달라졌을 때만 치운 것으로 인정
+        const changed = L >= 0 && sv.lum >= 0 && Math.abs(L - sv.lum) > 0.25 * Math.max(sv.lum, 40);
+        if(!dk || changed){ sv.miss++; if(now - sv.seen >= SAME_GONE_MS && sv.miss >= 3) sv.gone = true; }
+      }
+    } else sv = {raw:'', seen:0, gone:false, miss:0, lum:-1};
     for(const c of codes){ if(ignore.has(c.rawValue)) ignore.set(c.rawValue, now); }   // 아직 화면에 있으면 갱신
     for(const [raw, t] of ignore){ if(now - t > RELEASE_MS) ignore.delete(raw); }      // 사라진 지 오래되면 해제
     const fresh = [...new Set(codes.map(c => c.rawValue).filter(r => !ignore.has(r)))];
@@ -704,7 +716,7 @@ details summary{font-weight:800;font-size:14px;cursor:pointer}.hiddenInput{posit
     if(cur.a && cur.a.raw === raw){
       // [품질용] 성적서·내부 라벨의 QR 값이 같을 수 있음 → 첫 QR이 화면에서 사라졌다가(2초+) 같은 값이 다시 나타나면 두 번째 QR로 인정
       if(cur.b || cur.result) return;
-      if(!sv.gone){ camMsg('같은 QR이 계속 보입니다. 이 문서를 치우고 다음 문서의 QR을 비추세요'); return; }
+      if(!sv.gone){ camMsg('같은 QR이 계속 보입니다. 다른 문서(라벨)의 QR로 옮겨 비추세요'); return; }
       stable = {raw:'', n:0}; acceptSame(raw, fmtName); return;
     }
     stable = {raw:'', n:0};
